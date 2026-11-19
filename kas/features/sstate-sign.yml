@@ -1,0 +1,16 @@
+# =============================================================================
+# sstate PRODUCER overlay - only used by protected-branch pipelines that
+# publish to the shared mirror. Signs every sstate object with GPG so that
+# consumers (SSTATE_VERIFY_SIG=1 in ci-cache.yml) reject tampered objects.
+# Key is imported from a protected+masked CI File variable in before_script.
+# =============================================================================
+header:
+  version: 18
+
+env:
+  SLP_SSTATE_GPG_PASSPHRASE: ""
+
+local_conf_header:
+  15-sstate-sign: |
+    SSTATE_SIG_KEY = "${SLP_SSTATE_GPG_KEYID}"
+    SSTATE_SIG_PASSPHRASE = "${SLP_SSTATE_GPG_PASSPHRASE}"

@@ -1,0 +1,67 @@
+# =============================================================================
+# Product security gates - evidence for EU CRA (Regulation (EU) 2024/2847)
+#   * SBOM in machine-readable format       (Annex I Part II (1))
+#   * No known exploitable vulnerabilities  (Annex I Part I (2)(a))
+#   * Vulnerability handling + VEX trail    (Annex I Part II)
+# =============================================================================
+
+.security-base:
+  stage: security
+  image: $BUILDER_IMAGE
+  needs:
+    - job: build
+      artifacts: true
+  parallel:
+    matrix:
+      - MACHINE: [qemux86-64, qemuarm64]
+
+# Fails the pipeline on unpatched, untriaged CVEs >= CVE_GATE_MAX_CVSS.
+# Triaged CVEs (CVE_STATUS in secure-linux-cve-triage.inc) pass with a VEX record.
+security:cve-gate:
+  extends: .security-base
+  script:
+    - python3 ci/scripts/cve_gate.py
+        --cve-json out/${MACHINE}/cve/*.json
+        --max-cvss "$CVE_GATE_MAX_CVSS"
+        --mode "$CVE_GATE_MODE"
+        --junit junit-cve-${MACHINE}.xml
+        --markdown cve-summary-${MACHINE}.md
+  artifacts:
+    when: always
+    paths: ["cve-summary-${MACHINE}.md", "junit-cve-${MACHINE}.xml"]
+    reports:
+      junit: junit-cve-${MACHINE}.xml
+
+# Blocks forbidden licenses that slipped past INCOMPATIBLE_LICENSE
+# (e.g. via a bbappend overriding LICENSE) and records the full manifest.
+security:license-gate:
+  extends: .security-base
+  script:
+    - python3 ci/scripts/license_gate.py
+        out/${MACHINE}/licenses/license.manifest
+        --policy ci/policies/license-policy.yml
+        --junit junit-license-${MACHINE}.xml
+  artifacts:
+    when: always
+    reports:
+      junit: junit-license-${MACHINE}.xml
+
+# Push the SBOM to OWASP Dependency-Track for continuous monitoring after
+# release (CRA: vulnerabilities must be handled for the support period).
+security:sbom-upload:
+  extends: .security-base
+  rules:
+    - if: $DTRACK_URL && $CI_COMMIT_REF_PROTECTED == "true"
+  script:
+    - ci/scripts/dtrack-upload.sh "out/${MACHINE}/sbom" "secure-linux-${MACHINE}" "${CI_COMMIT_TAG:-$CI_COMMIT_REF_NAME}"
+
+# Post a CVE summary to the MR so reviewers see risk without opening logs
+security:mr-comment:
+  stage: security
+  image: $BUILDER_IMAGE
+  needs: [security:cve-gate]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $SLP_BOT_TOKEN
+  allow_failure: true
+  script:
+    - ci/scripts/mr-comment.sh cve-summary-*.md

@@ -1,0 +1,34 @@
+# Runtime tests: boot the test image in QEMU and run oeqa suites
+# (ping, ssh, systemd + Secure Linux hardening/agent tests). KVM runners are
+# preferred; without /dev/kvm the job still works, just slower (TCG).
+
+test:qemu:
+  stage: test
+  image: $BUILDER_IMAGE
+  tags: [yocto, kvm]
+  extends: [.yocto-caches]
+  needs: [build:test-image]
+  timeout: 1h
+  variables:
+    KAS_WORK_DIR: "$CI_PROJECT_DIR"
+    KAS_BUILD_DIR: "$CI_PROJECT_DIR/build"
+    KAS_REPO_REF_DIR: "$CI_PROJECT_DIR/.cache/kas-repos"
+    SLP_CVE_DB_DIR: "$CI_PROJECT_DIR/.cache/cve-db"
+    CACHE_POLICY: "pull"
+  before_script:
+    - source ci/scripts/cache-env.sh
+  script:
+    # Everything is in sstate from build:test-image -> this is a cache replay
+    - kas shell "kas/machines/qemux86-64.yml:${KAS_OVERLAYS}:kas/features/test.yml"
+        -c "bitbake secure-linux-image -c testimage"
+  after_script:
+    - python3 ci/scripts/oeqa_to_junit.py
+        build/tmp/log/oeqa/testresults.json --out junit-oeqa.xml || true
+  artifacts:
+    when: always
+    expire_in: 2 weeks
+    paths:
+      - build/tmp/log/oeqa/
+      - build/tmp/work/*/secure-linux-image/*/testimage/
+    reports:
+      junit: junit-oeqa.xml

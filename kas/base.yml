@@ -1,0 +1,74 @@
+# =============================================================================
+# Secure Linux Platform - base kas configuration (Yocto 6.0 "Wrynose" LTS, EOL 04/2030)
+#
+# Since Wrynose, Poky is no longer a single repo: bitbake, openembedded-core
+# and meta-yocto are fetched separately. kas handles that natively.
+#
+# Reproducibility: run `kas lock kas/base.yml` once -> kas/base.lock.yml
+# pins every repo to an exact commit. Renovate bumps the lock file via MR.
+# =============================================================================
+header:
+  version: 18
+
+distro: secure-linux
+machine: qemux86-64
+target:
+  - secure-linux-image
+
+build_system: oe
+
+repos:
+  # This repo itself (contains meta-secure-linux)
+  secure-linux:
+    layers:
+      meta-secure-linux:
+
+  bitbake:
+    url: https://git.openembedded.org/bitbake
+    # VERIFY: BitBake release branch matching Wrynose. Pin via `kas lock`.
+    branch: "2.16"
+    layers:
+      .: disabled
+
+  openembedded-core:
+    url: https://git.openembedded.org/openembedded-core
+    branch: wrynose
+    layers:
+      meta:
+
+  meta-yocto:
+    url: https://git.yoctoproject.org/meta-yocto
+    branch: wrynose
+    layers:
+      meta-poky:
+
+  meta-openembedded:
+    url: https://git.openembedded.org/meta-openembedded
+    branch: wrynose
+    layers:
+      meta-oe:
+      meta-python:
+      meta-networking:
+      meta-perl:
+
+  meta-security:
+    url: https://git.yoctoproject.org/meta-security
+    branch: wrynose
+    layers:
+      .:
+      meta-hardening:
+
+local_conf_header:
+  00-defaults: |
+    CONF_VERSION = "2"
+    PACKAGE_CLASSES = "package_ipk"
+    # Keep build dirs small in CI; sstate is what we cache
+    INHERIT += "rm_work"
+    # Fail fast on QA issues - quality gate inside the build itself
+    WARN_TO_ERROR_QA = "already-stripped compile-host-path install-host-path \
+                        installed-vs-shipped ldflags pn-overrides rpaths staticdev \
+                        unknown-configure-option useless-rpaths"
+    # Build statistics for performance dashboards (buildstats-summary in CI)
+    USER_CLASSES ?= "buildstats"
+    BB_DISKMON_DIRS = "STOPTASKS,${TMPDIR},1G,100K STOPTASKS,${DL_DIR},1G,100K \
+                       STOPTASKS,${SSTATE_DIR},1G,100K HALT,${TMPDIR},100M,1K"

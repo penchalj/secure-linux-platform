@@ -1,0 +1,49 @@
+# =============================================================================
+# Scheduled jobs (Build > Pipeline schedules, e.g. nightly 02:00 Europe/Berlin)
+# =============================================================================
+
+.schedule-only:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+
+# Refresh the NVD database once per night and store it in the GitLab cache
+# so that daytime builds never hit NVD rate limits (CVE_DB_UPDATE_INTERVAL=-1).
+maintenance:cve-db-refresh:
+  extends: .schedule-only
+  stage: .pre
+  image: $BUILDER_IMAGE
+  tags: [yocto]
+  variables:
+    KAS_WORK_DIR: "$CI_PROJECT_DIR"
+    KAS_REPO_REF_DIR: "$CI_PROJECT_DIR/.cache/kas-repos"
+    SLP_CVE_DB_DIR: "$CI_PROJECT_DIR/.cache/cve-db"
+  cache:
+    key: cve-db-$CI_DEFAULT_BRANCH
+    paths: [.cache/cve-db/]
+    policy: pull-push
+  script:
+    - echo 'CVE_DB_UPDATE_INTERVAL = "0"' > "$CI_PROJECT_DIR/cve-refresh.conf"
+    - kas shell "kas/machines/qemux86-64.yml:${KAS_OVERLAYS}"
+        -c "bitbake -R $CI_PROJECT_DIR/cve-refresh.conf cve-update-nvd2-native -c do_fetch -f"
+
+# Prune sstate objects not used for 30 days (keeps the mirror bounded)
+maintenance:sstate-prune:
+  extends: .schedule-only
+  stage: .pre
+  image: $BUILDER_IMAGE
+  tags: [yocto]
+  script:
+    - ci/scripts/sstate-prune.sh 30
+
+# Re-scan the LAST RELEASE against today's CVE data: new CVEs appear after
+# shipping. CRA requires handling them for the whole support period.
+maintenance:release-rescan:
+  extends: .schedule-only
+  stage: security
+  image: $BUILDER_IMAGE
+  needs: [maintenance:cve-db-refresh]
+  script:
+    - ci/scripts/rescan-last-release.sh
+  artifacts:
+    when: always
+    paths: [rescan/]

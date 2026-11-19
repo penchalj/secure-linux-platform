@@ -1,0 +1,61 @@
+# =============================================================================
+# Secure Linux Platform - Yocto DevSecOps pipeline (GitLab CI)
+#
+#   .pre      build-container  (BuildKit + registry layer cache, Trivy, cosign)
+#   lint      recipes, shell, Dockerfile, YAML, kernel hardening, secrets
+#   build     kas build matrix (qemux86-64, qemuarm64) with 4-level cache
+#   test      QEMU testimage (oeqa) -> JUnit in MR widget
+#   security  CVE gate (CRA), license gate, SBOM export, Dependency-Track
+#   publish   sstate mirror publish (protected only), artifact signing
+#   release   signed RAUC bundle, SLSA provenance, GitLab Release
+#
+# Docs: docs/ARCHITECTURE.md, docs/CACHING.md, docs/SECURITY.md
+# =============================================================================
+
+include:
+  - local: ci/templates/variables.yml
+  - local: ci/templates/cache.yml
+  - local: ci/templates/lint.yml
+  - local: ci/templates/container.yml
+  - local: ci/templates/build.yml
+  - local: ci/templates/test.yml
+  - local: ci/templates/security.yml
+  - local: ci/templates/release.yml
+  - local: ci/templates/maintenance.yml
+  # GitLab-native scanners (results land in the Security dashboard)
+  - template: Jobs/Secret-Detection.gitlab-ci.yml
+  - template: Jobs/SAST.gitlab-ci.yml
+
+stages:
+  - .pre
+  - lint
+  - build
+  - test
+  - security
+  - publish
+  - release
+
+# One pipeline per change: MR pipelines for branches with an open MR,
+# branch pipelines otherwise, plus tags and schedules. Avoids duplicates.
+workflow:
+  name: "$PIPELINE_NAME"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      variables: { PIPELINE_NAME: "Nightly: cache warm-up + CVE rescan" }
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+      variables: { PIPELINE_NAME: "Release $CI_COMMIT_TAG" }
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      variables: { PIPELINE_NAME: "MR !$CI_MERGE_REQUEST_IID: $CI_MERGE_REQUEST_TITLE" }
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      variables: { PIPELINE_NAME: "Main: build + publish sstate" }
+    - if: $CI_COMMIT_BRANCH
+  auto_cancel:
+    on_new_commit: interruptible
+
+default:
+  interruptible: true
+  retry:
+    max: 2
+    when: [runner_system_failure, stuck_or_timeout_failure, scheduler_failure]

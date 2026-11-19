@@ -1,0 +1,62 @@
+# =============================================================================
+# GitLab cache definitions - see docs/CACHING.md for the full design.
+#
+# Rule of thumb used here:
+#   * Small, hot, per-project data      -> GitLab `cache:` (S3-backed runner cache)
+#   * Huge, content-addressed Yocto data -> runner volume + S3 mirror
+#     (sstate is 50-300 GB; zipping it into GitLab cache would cost more
+#      time than it saves and cache keys can't express task hashes)
+#
+# Cache-poisoning protection:
+#   * MR pipelines run with policy "pull" (read-only) for every cache below
+#   * GitLab keeps protected/unprotected caches separate (`-protected` suffix);
+#     `unprotect: false` is the default and is stated explicitly here
+#   * sstate/download mirrors are written ONLY by protected-ref jobs that hold
+#     the S3 write credentials (protected CI variables)
+# =============================================================================
+
+.cache-policy-rules:
+  rules:
+    - if: $CI_COMMIT_REF_PROTECTED == "true"
+      variables: { CACHE_POLICY: "pull-push" }
+    - when: on_success
+      variables: { CACHE_POLICY: "pull" }
+
+# kas layer checkouts (KAS_REPO_REF_DIR) - keyed on the lock file, so a
+# layer bump produces a new cache, while fallback keeps the old one warm.
+.cache-kas-repos: &cache-kas-repos
+  key:
+    files: [kas/base.lock.yml]
+    prefix: kas-repos
+  fallback_keys: [kas-repos-$CI_DEFAULT_BRANCH]
+  paths: [.cache/kas-repos/]
+  policy: $CACHE_POLICY
+  unprotect: false
+  when: always
+
+# NVD CVE database (~1 GB uncompressed) - refreshed nightly by
+# `maintenance:cve-db-refresh`, consumed read-only by every build.
+.cache-cve-db: &cache-cve-db
+  key: cve-db-$CI_DEFAULT_BRANCH
+  paths: [.cache/cve-db/]
+  policy: pull
+  unprotect: false
+
+# Python tooling for lint jobs
+.cache-pip: &cache-pip
+  key:
+    files: [ci/requirements-lint.txt]
+    prefix: pip
+  paths: [.cache/pip/]
+  policy: $CACHE_POLICY
+
+.yocto-caches:
+  cache:
+    - *cache-kas-repos
+    - *cache-cve-db
+
+.lint-caches:
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  cache:
+    - *cache-pip

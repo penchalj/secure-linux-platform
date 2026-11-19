@@ -1,0 +1,16 @@
+# =============================================================================
+# Test-image overlay - ONLY for the QEMU testimage job. Never released.
+# Allows the oeqa harness to log in over SSH; the release pipeline builds
+# without this file and the rootfs audit then forbids empty passwords.
+# =============================================================================
+header:
+  version: 18
+
+local_conf_header:
+  40-test: |
+    SLP_TEST_IMAGE = "1"
+    EXTRA_IMAGE_FEATURES:append = " allow-root-login empty-root-password"
+    IMAGE_FSTYPES:append = " ext4"
+    TESTIMAGE_AUTO = "1"
+    # Use KVM when the runner exposes /dev/kvm (tag: kvm)
+    QEMU_USE_KVM = "${@'1' if os.path.exists('/dev/kvm') else ''}"

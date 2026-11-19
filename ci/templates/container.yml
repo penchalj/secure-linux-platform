@@ -1,0 +1,67 @@
+# Build container: rebuilt only when docker/ changes. BuildKit pushes its
+# layer cache to the registry (mode=max), so even a fresh runner reuses
+# the apt + tool layers. Image is Trivy-scanned and cosign-signed (keyless).
+
+build-container:
+  stage: .pre
+  image: { name: "moby/buildkit:rootless", entrypoint: [""] }
+  variables:
+    BUILDKITD_FLAGS: --oci-worker-no-process-sandbox
+  id_tokens:
+    SIGSTORE_ID_TOKEN: { aud: sigstore }
+  rules:
+    - changes: [docker/**/*, ci/scripts/**/*]
+  script:
+    - mkdir -p ~/.docker
+    - |
+      auth=$(printf '%s:%s' "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" | base64 | tr -d '\n')
+      printf '{"auths":{"%s":{"auth":"%s"}}}' "$CI_REGISTRY" "$auth" > ~/.docker/config.json
+    - buildctl-daemonless.sh build
+        --frontend dockerfile.v0
+        --local context=. --local dockerfile=docker
+        --output type=image,name=$CI_REGISTRY_IMAGE/builder:$CI_COMMIT_SHORT_SHA,push=true
+        --import-cache type=registry,ref=$CI_REGISTRY_IMAGE/builder:buildcache
+        --export-cache type=registry,ref=$CI_REGISTRY_IMAGE/builder:buildcache,mode=max
+        --metadata-file build-meta.json
+    - |
+      digest=$(sed -n 's/.*"containerimage.digest": *"\([^"]*\)".*/\1/p' build-meta.json)
+      echo "BUILDER_DIGEST=${digest}" >> builder.env
+  artifacts:
+    reports:
+      dotenv: builder.env
+
+container:scan:
+  stage: .pre
+  needs: [build-container]
+  image: { name: "aquasec/trivy:latest", entrypoint: [""] }
+  rules:
+    - changes: [docker/**/*, ci/scripts/**/*]
+  variables:
+    TRIVY_USERNAME: $CI_REGISTRY_USER
+    TRIVY_PASSWORD: $CI_REGISTRY_PASSWORD
+    TRIVY_CACHE_DIR: .cache/trivy
+  cache:
+    key: trivy-db
+    paths: [.cache/trivy/]
+  script:
+    - trivy image --exit-code 0 --format template --template "@/contrib/gitlab.tpl"
+        -o gl-container-scanning-report.json $CI_REGISTRY_IMAGE/builder@$BUILDER_DIGEST
+    - trivy image --exit-code 1 --severity CRITICAL --ignore-unfixed
+        $CI_REGISTRY_IMAGE/builder@$BUILDER_DIGEST
+  artifacts:
+    reports:
+      container_scanning: gl-container-scanning-report.json
+
+container:sign:
+  stage: .pre
+  needs: [build-container, container:scan]
+  image: { name: "bitnami/cosign:latest", entrypoint: [""] }
+  id_tokens:
+    SIGSTORE_ID_TOKEN: { aud: sigstore }
+  rules:
+    - if: $CI_COMMIT_REF_PROTECTED == "true"
+      changes: [docker/**/*, ci/scripts/**/*]
+  script:
+    - cosign login $CI_REGISTRY -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD
+    - cosign sign --yes $CI_REGISTRY_IMAGE/builder@$BUILDER_DIGEST
+    - cosign copy --force $CI_REGISTRY_IMAGE/builder@$BUILDER_DIGEST $CI_REGISTRY_IMAGE/builder:latest

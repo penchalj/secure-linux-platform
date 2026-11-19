@@ -1,0 +1,12 @@
+# Kernel options that MUST be present in the Secure Linux hardening fragment.
+# Source: KSPP recommended settings (subset). "n" means "is not set".
+required:
+  CONFIG_STRICT_KERNEL_RWX: "y"
+  CONFIG_STACKPROTECTOR_STRONG: "y"
+  CONFIG_RANDOMIZE_BASE: "y"
+  CONFIG_HARDENED_USERCOPY: "y"
+  CONFIG_FORTIFY_SOURCE: "y"
+  CONFIG_SECCOMP_FILTER: "y"
+  CONFIG_SECURITY_LOCKDOWN_LSM: "y"
+  CONFIG_DEVMEM: "n"
+  CONFIG_PROC_KCORE: "n"

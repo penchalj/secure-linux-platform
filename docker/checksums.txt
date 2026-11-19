@@ -1,0 +1,4 @@
+# SHA256 checksums of pinned tool downloads. Update together with versions.
+# Obtain from the upstream release pages (cosign_checksums.txt / oras checksums).
+REPLACE_WITH_REAL_SHA256  cosign-linux-amd64
+REPLACE_WITH_REAL_SHA256  oras_1.2.0_linux_amd64.tar.gz

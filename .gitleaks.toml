@@ -1,0 +1,12 @@
+title = "Secure Linux gitleaks config"
+[extend]
+useDefault = true
+
+[[rules]]
+id = "private-key-pem"
+description = "PEM private key (RAUC / GPG / TLS) committed to the repo"
+regex = '''-----BEGIN ((RSA|EC|OPENSSH|PGP) )?PRIVATE KEY( BLOCK)?-----'''
+tags = ["key", "signing"]
+
+[allowlist]
+paths = ['''docs/.*\.md''']

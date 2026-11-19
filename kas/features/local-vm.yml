@@ -1,0 +1,15 @@
+# Build profile for the VirtualBox build host (4 vCPU, ~9 GB RAM, no KVM).
+# Usage: kas-container build kas/machines/qemux86-64.yml:kas/features/local-vm.yml
+# with DL_DIR and SSTATE_DIR exported on the host (scripts/setup-build-host.sh).
+header:
+  version: 18
+
+local_conf_header:
+  05-local-vm: |
+    # 4 parallel bitbake tasks, 3 compile jobs each: fits ~9 GB RAM + swap
+    BB_NUMBER_THREADS = "4"
+    PARALLEL_MAKE = "-j 3"
+    # DL_DIR / SSTATE_DIR come from the host environment: kas-container
+    # mounts them into the container 
+    # No /dev/kvm in this VM: QEMU falls back to TCG (slower, still correct)
+    QEMU_USE_KVM = ""

@@ -1,0 +1,28 @@
+[Unit]
+Description=Secure Linux device agent
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/secure-linux-agent
+User=secure-linux
+Restart=on-failure
+
+# --- systemd sandboxing (verified by the secure_linux_hardening runtime test) ----
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,5 @@
+header:
+  version: 18
+  includes:
+    - kas/base.yml
+machine: qemux86-64

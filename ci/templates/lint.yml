@@ -1,0 +1,69 @@
+# Shift-left: fail in seconds, before spending runner-hours on bitbake.
+
+.lint-base:
+  stage: lint
+  image: python:3.12-slim
+  extends: [.lint-caches]
+  needs: []
+  rules:
+    - !reference [.cache-policy-rules, rules]
+
+lint:recipes:
+  extends: .lint-base
+  script:
+    - pip install -r ci/requirements-lint.txt
+    - oelint-adv --release wrynose --quiet --messageformat "{path}:{line}:{severity}:{id}:{msg}"
+        $(find meta-secure-linux -name '*.bb' -o -name '*.bbappend')
+        | tee oelint.txt
+    - python3 ci/scripts/oelint_to_codequality.py oelint.txt > gl-code-quality-oelint.json
+    - test ! -s oelint.txt || ! grep -q ":error:" oelint.txt
+  artifacts:
+    when: always
+    reports:
+      codequality: gl-code-quality-oelint.json
+
+lint:yaml-kas:
+  extends: .lint-base
+  script:
+    - pip install -r ci/requirements-lint.txt
+    - yamllint -c .yamllint kas/ ci/ .gitlab-ci.yml
+    # Schema-validate kas files (catches typos before a 2-hour build)
+    - kas dump --resolve-refs kas/base.yml:${KAS_OVERLAYS} > /dev/null
+
+lint:shell:
+  extends: .lint-base
+  image: koalaman/shellcheck-alpine:stable
+  cache: []
+  script:
+    - shellcheck -x ci/scripts/*.sh infra/scripts/*.sh
+
+lint:dockerfile:
+  extends: .lint-base
+  image: hadolint/hadolint:latest-alpine
+  cache: []
+  script:
+    - hadolint --format gitlab_codeclimate docker/Dockerfile > gl-code-quality-hadolint.json || true
+    - hadolint --failure-threshold warning docker/Dockerfile
+  artifacts:
+    when: always
+    reports:
+      codequality: gl-code-quality-hadolint.json
+
+lint:kernel-hardening:
+  extends: .lint-base
+  script:
+    - python3 ci/scripts/check_kconfig.py
+        meta-secure-linux/recipes-kernel/linux/files/secure-linux-kmeta/features/secure-linux/hardening.cfg
+        --policy ci/policies/kconfig-required.yml
+
+lint:gitleaks:
+  extends: .lint-base
+  image: { name: "zricethezav/gitleaks:latest", entrypoint: [""] }
+  cache: []
+  variables: { GIT_DEPTH: "0" }
+  script:
+    - gitleaks git --config .gitleaks.toml --report-format sarif
+        --report-path gitleaks.sarif --redact -v .
+  artifacts:
+    when: always
+    paths: [gitleaks.sarif]

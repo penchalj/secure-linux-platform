@@ -1,0 +1,19 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":dependencyDashboard"],
+  "timezone": "Europe/Berlin",
+  "schedule": ["before 6am on monday"],
+  "labels": ["dependencies"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Pinned tool versions in the Dockerfile",
+      "fileMatch": ["^docker/Dockerfile$"],
+      "matchStrings": ["# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\nARG \\w+=(?<currentValue>\\S+)"]
+    }
+  ],
+  "packageRules": [
+    { "matchManagers": ["dockerfile", "gitlabci"], "pinDigests": true },
+    { "description": "kas lock bumps are reviewed weekly as one MR", "matchFileNames": ["kas/*.lock.yml"], "groupName": "yocto layers" }
+  ]
+}

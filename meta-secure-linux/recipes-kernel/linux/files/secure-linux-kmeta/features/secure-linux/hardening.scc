@@ -1,0 +1,3 @@
+define KFEATURE_DESCRIPTION "Secure Linux Platform kernel hardening (KSPP-aligned subset)"
+define KFEATURE_COMPATIBILITY all
+kconf hardware hardening.cfg

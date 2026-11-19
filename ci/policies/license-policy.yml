@@ -1,0 +1,10 @@
+# Licenses never allowed in a shipped image (second line of defence after
+# INCOMPATIBLE_LICENSE in kas/features/security.yml).
+deny:
+  - "GPL-3.0*"
+  - "LGPL-3.0*"
+  - "AGPL-*"
+  - "CLOSED"
+  - "Proprietary"
+# package-name -> justification + approval reference (legal review)
+exceptions: {}

@@ -1,0 +1,32 @@
+# =============================================================================
+# Release overlay - production image, signed update bundle, no debug tweaks
+# Only used on tags (vX.Y.Z) from protected refs.
+# =============================================================================
+header:
+  version: 18
+
+repos:
+  meta-rauc:
+    url: https://github.com/rauc/meta-rauc
+    branch: wrynose
+    layers:
+      .:
+
+env:
+  SLP_RAUC_KEY: ""
+  SLP_RAUC_CERT: ""
+  SLP_RAUC_KEYRING: ""
+
+local_conf_header:
+  30-release: |
+    DISTRO_FEATURES:append = " rauc"
+    EXTRA_IMAGE_FEATURES:remove = "debug-tweaks allow-empty-password empty-root-password"
+    # Signing material is injected as GitLab CI "File" variables (masked,
+    # protected) - never committed. Dev keys: scripts/gen-dev-keys.sh
+    RAUC_KEY_FILE  = "${SLP_RAUC_KEY}"
+    RAUC_CERT_FILE = "${SLP_RAUC_CERT}"
+    RAUC_KEYRING_FILE = "${SLP_RAUC_KEYRING}"
+
+target:
+  - secure-linux-image
+  - secure-linux-bundle

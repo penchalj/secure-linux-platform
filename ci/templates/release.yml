@@ -1,0 +1,63 @@
+# =============================================================================
+# Release: tag vX.Y.Z on a protected ref ->
+#   1. production build with signed RAUC bundle (keys from protected File vars)
+#   2. cosign keyless signatures (GitLab OIDC -> Sigstore) for every artefact
+#   3. SLSA provenance (RUNNER_GENERATE_ARTIFACTS_METADATA, see variables.yml)
+#   4. upload to Generic Package Registry + GitLab Release with SBOM + VEX
+# Deployment to the release environment requires approval (protected env).
+# =============================================================================
+
+.release-rules:
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/ && $CI_COMMIT_REF_PROTECTED == "true"
+
+release:build:
+  extends: [.kas-build, .release-rules]
+  stage: publish
+  needs: [security:cve-gate, security:license-gate, test:qemu]
+  parallel:
+    matrix:
+      - MACHINE: [qemux86-64, qemuarm64]
+  variables:
+    EXTRA_OVERLAYS: ":kas/features/sstate-sign.yml:kas/features/release.yml"
+    CACHE_POLICY: "pull"
+  environment:
+    name: release-signing
+    action: prepare
+
+release:sign:
+  stage: publish
+  extends: .release-rules
+  image: $BUILDER_IMAGE
+  needs: [release:build]
+  id_tokens:
+    SIGSTORE_ID_TOKEN: { aud: sigstore }
+  script:
+    - ci/scripts/sign-artifacts.sh out/
+  artifacts:
+    paths: [out/]
+    expire_in: never
+
+release:publish:
+  stage: release
+  extends: .release-rules
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  needs: [release:sign]
+  environment:
+    name: production
+    deployment_tier: production
+  script:
+    - apk add --no-cache curl
+    - |
+      for f in $(find out -type f \( -name '*.raucb' -o -name '*.spdx.json' -o -name '*.sig' -o -name '*.pem' -o -name 'SHA256SUMS' \)); do
+        curl --fail -sS --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file "$f" \
+          "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/secure-linux-os/${CI_COMMIT_TAG}/$(basename "$f")"
+      done
+  release:
+    tag_name: $CI_COMMIT_TAG
+    name: "Secure Linux Platform $CI_COMMIT_TAG"
+    description: "Signed release. Verify: cosign verify-blob --certificate-identity-regexp '${CI_PROJECT_URL}' --certificate-oidc-issuer '${CI_SERVER_URL}' ... See docs/SECURITY.md"
+    assets:
+      links:
+        - name: "Package registry"
+          url: "${CI_PROJECT_URL}/-/packages"

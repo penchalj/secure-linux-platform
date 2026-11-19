@@ -1,0 +1,47 @@
+# =============================================================================
+# GitLab Runner config for the Yocto fleet (docker executor).
+# Two cache tiers:
+#   [runners.cache]          -> GitLab `cache:` keyword, stored in S3 (MinIO)
+#                               shared by ALL runners (kas repos, CVE DB, pip)
+#   volumes "/cache/yocto"   -> persistent host volume for sstate + downloads
+#                               (too big for zip-based GitLab cache)
+# Register with: gitlab-runner register --tag-list yocto,kvm ...
+# =============================================================================
+concurrent = 4
+check_interval = 3
+
+[[runners]]
+  name = "yocto-builder-01"
+  url = "https://gitlab.example.com"
+  token = "${RUNNER_TOKEN}"
+  executor = "docker"
+  # Big builds: give bitbake the whole box, one job at a time per runner
+  limit = 1
+
+  [runners.cache]
+    Type = "s3"
+    Shared = true
+    MaxUploadedArchiveSize = 0
+    [runners.cache.s3]
+      ServerAddress = "minio.example.internal:9000"
+      BucketName = "gitlab-runner-cache"
+      BucketLocation = "eu-central-1"
+      Insecure = false
+      AuthenticationType = "access-key"
+      AccessKey = "${RUNNER_CACHE_ACCESS_KEY}"
+      SecretKey = "${RUNNER_CACHE_SECRET_KEY}"
+
+  [runners.docker]
+    image = "ghcr.io/siemens/kas/kas:5.0"
+    privileged = false
+    # KVM for fast QEMU testimage (job tag: kvm)
+    devices = ["/dev/kvm", "/dev/net/tun"]
+    cap_add = ["NET_ADMIN"]
+    shm_size = 2147483648
+    pull_policy = ["if-not-present"]
+    volumes = [
+      "/srv/yocto-cache:/cache/yocto:rw",
+    ]
+    # Isolate untrusted (MR) jobs from the writable cache: see docs/CACHING.md
+    # -> second runner "yocto-mr" with "/srv/yocto-cache:/cache/yocto:ro"
+    #    plus an overlay tmpfs for SSTATE_DIR writes.

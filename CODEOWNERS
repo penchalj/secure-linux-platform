@@ -1,0 +1,14 @@
+# Security-relevant files require review by the security owners
+[Security] @secure-linux/security
+meta-secure-linux/conf/secure-linux-cve-triage.inc
+meta-secure-linux/conf/distro/
+ci/policies/
+kas/features/security.yml
+kas/features/sstate-sign.yml
+kas/features/release.yml
+
+[Platform] @secure-linux/platform
+.gitlab-ci.yml
+ci/
+docker/
+infra/

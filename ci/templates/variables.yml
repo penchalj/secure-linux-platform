@@ -1,0 +1,29 @@
+variables:
+  # Build container - pinned by digest after first build (Renovate keeps it fresh)
+  BUILDER_IMAGE: "$CI_REGISTRY_IMAGE/builder:latest"
+  KAS_BASE: "kas/base.yml"
+  KAS_OVERLAYS: "kas/features/ci-cache.yml:kas/features/security.yml"
+
+  # Persistent cache volume mounted by the runner (see infra/runner/config.toml)
+  SLP_CACHE_DIR: "/cache/yocto"
+
+  # Cache services (override per environment in project CI/CD settings)
+  SSTATE_MIRROR_URL: "https://sstate.example.internal"
+  DL_MIRROR_URL: "https://downloads.example.internal"
+  SSTATE_BUCKET: "s3://secure-linux-sstate"
+  DL_BUCKET: "s3://secure-linux-downloads"
+  HASHSERV_URL: "hashserv.example.internal:8686"
+  PRSERV_URL: "prserv.example.internal:8585"
+
+  # Security gate thresholds (CRA vulnerability handling)
+  CVE_GATE_MAX_CVSS: "7.0"        # fail on unpatched, untriaged CVE >= this
+  CVE_GATE_MODE: "enforce"        # enforce | report
+
+  # Faster git for large repos
+  GIT_DEPTH: "20"
+  FF_USE_FASTZIP: "true"
+  ARTIFACT_COMPRESSION_LEVEL: "fast"
+  CACHE_COMPRESSION_LEVEL: "fast"
+
+  # SLSA provenance for every artifact (GitLab-native)
+  RUNNER_GENERATE_ARTIFACTS_METADATA: "true"

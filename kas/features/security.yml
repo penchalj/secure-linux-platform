@@ -1,0 +1,36 @@
+# =============================================================================
+# Security & compliance overlay - always on in CI
+# SBOM (SPDX 3.0), CVE analysis (sbom-cve-check + cve-check), VEX,
+# license gate, source archiving for GPL compliance.
+# =============================================================================
+header:
+  version: 18
+
+local_conf_header:
+  20-security: |
+    # --- SBOM ---------------------------------------------------------------
+    INHERIT += "create-spdx"
+    SPDX_INCLUDE_SOURCES = "0"
+    SPDX_INCLUDE_VEX = "all"
+    SPDX_PRETTY = "1"
+
+    # --- Vulnerability management --------------------------------------------
+    # New in Wrynose: post-build analysis of the image SBOM
+    INHERIT += "sbom-cve-check"
+    # Classic NVD-based check kept for JSON reports consumed by ci/scripts
+    INHERIT += "cve-check"
+    CVE_CHECK_FORMAT_JSON = "1"
+    CVE_CHECK_REPORT_PATCHED = "1"
+    # Triage decisions live in-tree, reviewed via MR (auditable VEX trail)
+    include conf/secure-linux-cve-triage.inc
+
+    # --- License compliance ---------------------------------------------------
+    INCOMPATIBLE_LICENSE = "GPL-3.0* LGPL-3.0* AGPL-3.0*"
+    COPY_LIC_MANIFEST = "1"
+    COPY_LIC_DIRS = "1"
+    LICENSE_CREATE_PACKAGE = "1"
+    INHERIT += "archiver"
+    ARCHIVER_MODE[src] = "original"
+    ARCHIVER_MODE[diff] = "1"
+    ARCHIVER_MODE[recipe] = "1"
+    COPYLEFT_LICENSE_INCLUDE = "GPL* LGPL*"

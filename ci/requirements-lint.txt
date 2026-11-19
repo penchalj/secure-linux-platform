@@ -1,0 +1,4 @@
+oelint-adv==8.*
+yamllint==1.*
+kas==5.*
+PyYAML==6.*

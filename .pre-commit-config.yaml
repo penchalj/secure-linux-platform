@@ -1,0 +1,13 @@
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks: [{ id: gitleaks }]
+  - repo: https://github.com/priv-kweihmann/oelint-adv
+    rev: 8.0.0
+    hooks: [{ id: oelint-adv, args: ["--release=wrynose", "--quiet"] }]
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks: [{ id: shellcheck }]
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks: [{ id: yamllint }]
