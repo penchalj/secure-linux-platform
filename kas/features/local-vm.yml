@@ -16,3 +16,7 @@ local_conf_header:
     # Keep the hash-equivalence DB next to the shared sstate cache so that
     # sstate is reused across build dirs/checkouts (Wrynose sanity warning)
     BB_HASHSERVE_DB_DIR = "${SSTATE_DIR}"
+    # Fetch sources from the Yocto Project mirror first: the exact tarballs the
+    # release was tested with (upstream servers sometimes re-roll or block them)
+    INHERIT += "own-mirrors"
+    SOURCE_MIRROR_URL = "https://downloads.yoctoproject.org/mirror/sources/"
