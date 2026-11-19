@@ -25,8 +25,8 @@ repos:
 
   bitbake:
     url: https://git.openembedded.org/bitbake
-    # VERIFY: BitBake release branch matching Wrynose. Pin via `kas lock`.
-    branch: "2.16"
+    # BitBake 2.18 = Yocto 6.0 Wrynose (2.16 is 5.3 Whinlatter). Pinned via kas lock.
+    branch: "2.18"
     layers:
       .: disabled
 

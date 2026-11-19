@@ -48,6 +48,7 @@ local_conf_header:
     BB_SIGNATURE_HANDLER = "OEEquivHash"
     BB_HASHSERVE = "auto"
     BB_HASHSERVE_UPSTREAM = "${HASHSERV_URL}"
+    BB_HASHSERVE_DB_DIR = "${SSTATE_DIR}"
 
     # --- L4: package revision service ----------------------------------------
     PRSERV_HOST = "${PRSERV_URL}"

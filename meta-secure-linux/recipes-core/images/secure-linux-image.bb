@@ -2,7 +2,7 @@ SUMMARY = "Secure Linux Platform hardened reference image"
 DESCRIPTION = "Minimal, hardened image with SBOM, CVE analysis and test hooks."
 LICENSE = "MIT"
 
-inherit core-image
+inherit core-image extrausers
 
 IMAGE_FEATURES += "ssh-server-openssh read-only-rootfs"
 IMAGE_INSTALL:append = " \
