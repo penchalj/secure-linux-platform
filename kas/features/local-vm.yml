@@ -7,7 +7,7 @@ header:
 local_conf_header:
   05-local-vm: |
     # 4 parallel bitbake tasks, 3 compile jobs each: fits ~9 GB RAM + swap
-    BB_NUMBER_THREADS = "4"
+    BB_NUMBER_THREADS = "3"
     PARALLEL_MAKE = "-j 3"
     # DL_DIR / SSTATE_DIR come from the host environment: kas-container
     # mounts them into the container 
