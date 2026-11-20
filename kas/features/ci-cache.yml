@@ -56,4 +56,3 @@ local_conf_header:
     # --- CVE database: refreshed once nightly, never fetched by builds ------
     CVE_CHECK_DB_DIR = "${SLP_CVE_DB_DIR}"
     CVE_DB_UPDATE_INTERVAL = "-1"
-

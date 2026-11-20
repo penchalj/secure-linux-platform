@@ -10,7 +10,7 @@ local_conf_header:
     BB_NUMBER_THREADS = "3"
     PARALLEL_MAKE = "-j 3"
     # DL_DIR / SSTATE_DIR come from the host environment: kas-container
-    # mounts them into the container 
+    # mounts them into the container
     # No /dev/kvm in this VM: QEMU falls back to TCG (slower, still correct)
     QEMU_USE_KVM = ""
     # Keep the hash-equivalence DB next to the shared sstate cache so that
