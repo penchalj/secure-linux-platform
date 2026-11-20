@@ -59,7 +59,7 @@ build:qemux86-64:
     # Map the image's "builder" user to the cache owner, then drop root
     - groupmod -o -g "$BUILD_UID" "$(id -gn builder)"
     - usermod -o -u "$BUILD_UID" builder
-    - chown -R builder: /builder "$CI_PROJECT_DIR"
+    - chown -R builder:"$(id -gn builder)" /builder "$CI_PROJECT_DIR"
     - runuser -u builder -- env HOME=/builder ci/scripts/ci-build.sh
   artifacts:
     when: always
