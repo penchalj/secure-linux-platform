@@ -1,4 +1,5 @@
 # =============================================================================
+# TARGET DESIGN - enabled milestone by milestone (v0.3+). Not active yet.
 # Secure Linux Platform - Yocto DevSecOps pipeline (GitLab CI)
 #
 #   .pre      build-container  (BuildKit + registry layer cache, Trivy, cosign)
