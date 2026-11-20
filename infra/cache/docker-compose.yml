@@ -1,0 +1,71 @@
+# =============================================================================
+# Secure Linux Platform - shared Yocto cache services (milestone v0.3)
+#
+#   garage    S3-compatible object store (replaces MinIO, whose community
+#             edition is archived and unpatched since 2025/2026)
+#               :3900 S3 API   write path, credentials, localhost + CI network
+#               :3902 web      READ-ONLY HTTP for SSTATE_MIRRORS / PREMIRRORS
+#               :3903 admin    localhost only
+#   hashserv  bitbake hash-equivalence server (reuse sstate across hash changes)
+#   prserv    bitbake package-revision server (monotonic PR values)
+#
+# All services join the docker network "yocto-cache"; the GitLab runner puts
+# job containers on the same network, so jobs reach them by name.
+# Start: infra/cache/bootstrap-cache.sh
+# =============================================================================
+name: slp-cache
+
+networks:
+  yocto-cache:
+    name: yocto-cache
+
+x-bitbake: &bitbake
+  image: ghcr.io/siemens/kas/kas:5.5
+  restart: unless-stopped
+  user: "${SLP_UID:-1000}:${SLP_GID:-1000}"
+  networks: [yocto-cache]
+
+services:
+  garage:
+    image: dxflrs/garage:v2.3.0
+    restart: unless-stopped
+    volumes:
+      - ${SLP_SERVICES_DIR}/garage/garage.toml:/etc/garage.toml:ro
+      - ${SLP_SERVICES_DIR}/garage/meta:/var/lib/garage/meta
+      - ${SLP_SERVICES_DIR}/garage/data:/var/lib/garage/data
+    ports:
+      - "127.0.0.1:3900:3900"
+      - "127.0.0.1:3902:3902"
+      - "127.0.0.1:3903:3903"
+    networks:
+      yocto-cache:
+        # Garage web endpoint routes by Host header: <bucket>.web.garage
+        aliases: [sstate.web.garage, downloads.web.garage]
+
+  hashserv:
+    <<: *bitbake
+    entrypoint:
+      - /opt/bitbake/bin/bitbake-hashserv
+      - --bind
+      - 0.0.0.0:8686
+      - --database
+      - /data/hashserv.db
+      - --log
+      - INFO
+    volumes:
+      - ${SLP_BITBAKE_DIR}:/opt/bitbake:ro
+      - ${SLP_SERVICES_DIR}/hashserv:/data
+
+  prserv:
+    <<: *bitbake
+    # bitbake-prserv daemonises; keep the container alive by following its log
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        /opt/bitbake/bin/bitbake-prserv --start --host 0.0.0.0 --port 8585
+        --file /data/prserv.sqlite3 --log /data/prserv.log
+        && exec tail -F /data/prserv.log
+    volumes:
+      - ${SLP_BITBAKE_DIR}:/opt/bitbake:ro
+      - ${SLP_SERVICES_DIR}/prserv:/data
