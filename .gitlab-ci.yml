@@ -39,31 +39,28 @@ lint:yaml:
 
 build:qemux86-64:
   stage: build
-  image: $KAS_IMAGE
+  image:
+    name: $KAS_IMAGE
+    # Bypass the kas container entrypoint (built for `docker run`, not for
+    # GitLab's shell executor) and start as root to map the build user
+    entrypoint: [""]
+    docker:
+      user: root
   timeout: 8h
   needs: [lint:yaml]
   variables:
     MACHINE: qemux86-64
-    # kas image entrypoint runs bitbake as user "builder" with this uid/gid,
-    # matching the owner of the persistent cache on the runner host
-    USER_ID: "1000"
-    GROUP_ID: "1000"
+    BUILD_UID: "1000"     # owner of /srv/yocto/cache on the runner host
     DL_DIR: /cache/yocto/downloads
     SSTATE_DIR: /cache/yocto/sstate-cache
     KAS_WORK_DIR: /cache/yocto/ci/work
     KAS_BUILD_DIR: /cache/yocto/ci/build-qemux86-64
   script:
-    - set -o pipefail
-    - mkdir -p "$KAS_WORK_DIR"
-    # Fresh tmp every run: the image is always assembled from sstate, never
-    # from leftovers of a previous job (reproducible, measurable)
-    - rm -rf "$KAS_BUILD_DIR/tmp"
-    - kas build "$CI_PROJECT_DIR/kas/machines/${MACHINE}.yml:$CI_PROJECT_DIR/kas/features/local-vm.yml" 2>&1 | tee build.log
-    - python3 ci/scripts/cache_stats.py build.log --machine "$MACHINE" --metrics metrics.txt --json "cache-stats-${MACHINE}.json"
-    - DEPLOY="$KAS_BUILD_DIR/tmp/deploy/images/$MACHINE"
-    - ls -lh "$DEPLOY" | tee "images-${MACHINE}.txt"
-    - cp -L "$DEPLOY/secure-linux-image-${MACHINE}.rootfs.spdx.json" .
-    - cp -L "$DEPLOY/secure-linux-image-${MACHINE}.rootfs.manifest" . || true
+    # Map the image's "builder" user to the cache owner, then drop root
+    - groupmod -o -g "$BUILD_UID" "$(id -gn builder)"
+    - usermod -o -u "$BUILD_UID" builder
+    - chown -R builder: /builder "$CI_PROJECT_DIR"
+    - runuser -u builder -- env HOME=/builder ci/scripts/ci-build.sh
   artifacts:
     when: always
     expire_in: 4 weeks
