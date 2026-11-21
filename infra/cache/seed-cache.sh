@@ -26,9 +26,10 @@ rclone() {
 
 echo "== sstate: $(du -sh "$CACHE/sstate-cache" | cut -f1)"
 rclone copy /cache/sstate-cache :s3:sstate \
-  --include "*.tar.zst" --include "*.siginfo" --include "*.sig"
+  --include "*.tar.zst" --include "*.siginfo" --include "*.sig" \
+  --min-size 1B   # never publish 0-byte objects (crash leftovers break fetches)
 
-echo "== downloads (top-level tarballs): $(du -sh --max-depth=0 "$CACHE/downloads" | cut -f1)"
+echo "== downloads (top-level tarballs): $(du -sh "$CACHE/downloads" | cut -f1)"
 rclone copy /cache/downloads :s3:downloads --max-depth 1 \
   --exclude "*.done" --exclude "*.lock" --exclude "*_bad-checksum_*" --exclude "*.tmp"
 
