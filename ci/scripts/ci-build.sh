@@ -1,17 +1,33 @@
 #!/usr/bin/env bash
 # Yocto build step for GitLab CI. Runs as the unprivileged user "builder"
 # (bitbake refuses root). Called by .gitlab-ci.yml via runuser.
+#
+# Env: MACHINE, KAS_WORK_DIR, KAS_BUILD_DIR, DL_DIR, SSTATE_DIR,
+#      KAS_FEATURES (colon-separated overlays, relative to the repo)
+#      FRESH_RUNNER=1  -> start with EMPTY local DL_DIR/SSTATE_DIR
+#                         (simulates a brand-new runner: everything must come
+#                          from the shared read-only mirror)
 set -euo pipefail
 
 : "${MACHINE:?}" "${KAS_WORK_DIR:?}" "${KAS_BUILD_DIR:?}" "${CI_PROJECT_DIR:?}"
+: "${KAS_FEATURES:=kas/features/local-vm.yml:kas/features/ci-mirror.yml}"
 cd "$CI_PROJECT_DIR"
 
-mkdir -p "$KAS_WORK_DIR"
+if [[ "${FRESH_RUNNER:-0}" == "1" ]]; then
+    echo "FRESH_RUNNER=1: wiping local DL_DIR and SSTATE_DIR ($DL_DIR, $SSTATE_DIR)"
+    rm -rf "$DL_DIR" "$SSTATE_DIR"
+fi
+mkdir -p "$KAS_WORK_DIR" "$DL_DIR" "$SSTATE_DIR"
 # Fresh tmp every run: the image is always assembled from sstate, never from
 # leftovers of a previous job (reproducible, measurable)
 rm -rf "$KAS_BUILD_DIR/tmp"
 
-kas build "$CI_PROJECT_DIR/kas/machines/${MACHINE}.yml:$CI_PROJECT_DIR/kas/features/local-vm.yml" 2>&1 | tee build.log
+config="$CI_PROJECT_DIR/kas/machines/${MACHINE}.yml"
+IFS=':' read -ra overlays <<< "$KAS_FEATURES"
+for o in "${overlays[@]}"; do config+=":$CI_PROJECT_DIR/$o"; done
+echo "kas config: $config"
+
+kas build "$config" 2>&1 | tee build.log
 
 python3 ci/scripts/cache_stats.py build.log --machine "$MACHINE" \
     --metrics metrics.txt --json "cache-stats-${MACHINE}.json"
@@ -20,3 +36,8 @@ DEPLOY="$KAS_BUILD_DIR/tmp/deploy/images/$MACHINE"
 ls -lh "$DEPLOY" | tee "images-${MACHINE}.txt"
 cp -L "$DEPLOY/secure-linux-image-${MACHINE}.rootfs.spdx.json" .
 cp -L "$DEPLOY/secure-linux-image-${MACHINE}.rootfs.manifest" . || true
+
+if [[ "${FRESH_RUNNER:-0}" == "1" ]]; then
+    echo "FRESH_RUNNER=1: removing throw-away local caches"
+    rm -rf "$DL_DIR" "$SSTATE_DIR" "$KAS_BUILD_DIR/tmp"
+fi

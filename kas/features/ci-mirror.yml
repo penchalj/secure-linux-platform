@@ -1,0 +1,32 @@
+# =============================================================================
+# Shared cache services (v0.3) - consumer side, READ-ONLY for every build.
+#
+#   sstate mirror     http://sstate.web.garage:3902     (Garage web endpoint)
+#   download mirror   http://downloads.web.garage:3902  (Garage web endpoint)
+#   hash equivalence  hashserv:8686  (upstream for the local hashserv DB)
+#   PR service        prserv:8585   (enabled in step 3)
+#
+# Reachable from CI job containers on docker network "yocto-cache".
+# Writing to the mirror is a separate, credentialed publish step on protected
+# refs only (cache-poisoning protection, see docs/CACHING.md).
+# =============================================================================
+header:
+  version: 18
+
+local_conf_header:
+  20-ci-mirror: |
+    SSTATE_MIRRORS ?= "file://.* http://sstate.web.garage:3902/PATH;downloadfilename=PATH"
+    # Own download mirror first, then the Yocto source mirror (own-mirrors in
+    # local-vm.yml), then upstream
+    PREMIRRORS:prepend = "\
+        git://.*/.*   http://downloads.web.garage:3902/ \
+        gitsm://.*/.* http://downloads.web.garage:3902/ \
+        ftp://.*/.*   http://downloads.web.garage:3902/ \
+        http://.*/.*  http://downloads.web.garage:3902/ \
+        https://.*/.* http://downloads.web.garage:3902/ \
+    "
+    BB_HASHSERVE_UPSTREAM = "hashserv:8686"
+    # Enabled one at a time after a hit-rate baseline (v0.3 step 3), so any
+    # effect on task signatures shows up in the sstate metrics:
+    # PRSERV_HOST = "prserv:8585"
+    # BB_GENERATE_MIRROR_TARBALLS = "1"

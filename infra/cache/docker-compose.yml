@@ -30,9 +30,9 @@ services:
     image: dxflrs/garage:v2.3.0
     restart: unless-stopped
     volumes:
-      - ${SLP_SERVICES_DIR}/garage/garage.toml:/etc/garage.toml:ro
-      - ${SLP_SERVICES_DIR}/garage/meta:/var/lib/garage/meta
-      - ${SLP_SERVICES_DIR}/garage/data:/var/lib/garage/data
+      - ${SLP_SERVICES_DIR:-/srv/yocto/services}/garage/garage.toml:/etc/garage.toml:ro
+      - ${SLP_SERVICES_DIR:-/srv/yocto/services}/garage/meta:/var/lib/garage/meta
+      - ${SLP_SERVICES_DIR:-/srv/yocto/services}/garage/data:/var/lib/garage/data
     ports:
       - "127.0.0.1:3900:3900"
       - "127.0.0.1:3902:3902"
@@ -53,8 +53,8 @@ services:
       - --log
       - INFO
     volumes:
-      - ${SLP_BITBAKE_DIR}:/opt/bitbake:ro
-      - ${SLP_SERVICES_DIR}/hashserv:/data
+      - ${SLP_BITBAKE_DIR:-/srv/yocto/cache/ci/work/bitbake}:/opt/bitbake:ro
+      - ${SLP_SERVICES_DIR:-/srv/yocto/services}/hashserv:/data
 
   prserv:
     <<: *bitbake
@@ -67,5 +67,5 @@ services:
         --file /data/prserv.sqlite3 --log /data/prserv.log
         && exec tail -F /data/prserv.log
     volumes:
-      - ${SLP_BITBAKE_DIR}:/opt/bitbake:ro
-      - ${SLP_SERVICES_DIR}/prserv:/data
+      - ${SLP_BITBAKE_DIR:-/srv/yocto/cache/ci/work/bitbake}:/opt/bitbake:ro
+      - ${SLP_SERVICES_DIR:-/srv/yocto/services}/prserv:/data

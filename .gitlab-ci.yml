@@ -55,6 +55,8 @@ build:qemux86-64:
     SSTATE_DIR: /cache/yocto/sstate-cache
     KAS_WORK_DIR: /cache/yocto/ci/work
     KAS_BUILD_DIR: /cache/yocto/ci/build-qemux86-64
+    # v0.3: shared read-only mirror + hashserv/prserv (docker network yocto-cache)
+    KAS_FEATURES: "kas/features/local-vm.yml:kas/features/ci-mirror.yml"
   script:
     # Map the image's "builder" user to the cache owner, then drop root
     - groupmod -o -g "$BUILD_UID" "$(id -gn builder)"
@@ -72,3 +74,17 @@ build:qemux86-64:
       - "*.rootfs.manifest"
     reports:
       metrics: metrics.txt
+
+# Simulates a brand-new runner: EMPTY local DL_DIR/SSTATE_DIR, so every object
+# must come from the shared read-only mirror. Manual - used for benchmarks.
+build:fresh-runner:
+  extends: build:qemux86-64
+  variables:
+    FRESH_RUNNER: "1"
+    DL_DIR: /cache/yocto/ci/fresh/downloads
+    SSTATE_DIR: /cache/yocto/ci/fresh/sstate-cache
+    KAS_BUILD_DIR: /cache/yocto/ci/build-fresh
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+      allow_failure: true
