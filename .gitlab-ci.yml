@@ -15,17 +15,31 @@ stages:
   - lint
   - build
 
+# Trust boundary (cache-poisoning protection, v0.3 step 3):
+#   protected refs (main, release tags) -> runner "yocto"  (trusted cache
+#                                          volume, publish credentials)
+#   everything else (MRs, feature branches) -> runner "yocto-untrusted"
+#                                          (own throw-away volume, mirror
+#                                          read-only over HTTP)
+# The trusted runner is additionally marked "Protected" in GitLab, so it
+# refuses jobs from unprotected refs even if a job asks for its tag.
 workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      variables:
+        RUNNER_TAG: yocto-untrusted
     - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
       when: never
-    - if: $CI_COMMIT_BRANCH
-    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_REF_PROTECTED == "true"
+      variables:
+        RUNNER_TAG: yocto
+    - if: $CI_COMMIT_BRANCH || $CI_COMMIT_TAG
+      variables:
+        RUNNER_TAG: yocto-untrusted
 
 default:
   interruptible: true
-  tags: [yocto]
+  tags: [$RUNNER_TAG]
 
 variables:
   KAS_IMAGE: "ghcr.io/siemens/kas/kas:5.5"
