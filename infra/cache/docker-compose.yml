@@ -44,6 +44,10 @@ services:
 
   hashserv:
     <<: *bitbake
+    # HASHSERVER_ANON_PERMS=@read + admin user (bootstrap-cache.sh, 0600):
+    # anonymous clients read only, reporting requires an authenticated user
+    env_file:
+      - ${SLP_SERVICES_DIR:-/srv/yocto/services}/hashserv/hashserv.env
     entrypoint:
       - /opt/bitbake/bin/bitbake-hashserv
       - --bind
