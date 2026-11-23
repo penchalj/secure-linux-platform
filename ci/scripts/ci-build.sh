@@ -18,9 +18,19 @@ if [[ "${FRESH_RUNNER:-0}" == "1" ]]; then
     rm -rf "$DL_DIR" "$SSTATE_DIR"
 fi
 mkdir -p "$KAS_WORK_DIR" "$DL_DIR" "$SSTATE_DIR"
-# Fresh tmp every run: the image is always assembled from sstate, never from
-# leftovers of a previous job (reproducible, measurable)
-rm -rf "$KAS_BUILD_DIR/tmp"
+# Keep TMPDIR between jobs on the same runner volume: the parse cache and the
+# sstate-control state survive, so unchanged tasks are "Current" (no setscene
+# unpack) and only what a commit really changes is rebuilt. Each runner has its
+# own volume, so untrusted MR leftovers never reach the trusted build dir.
+# CLEAN_TMP=1 (nightly / benchmarks / after a crash) restores the old
+# "everything from sstate" behaviour.
+if [[ "${CLEAN_TMP:-0}" == "1" ]]; then
+    echo "CLEAN_TMP=1: removing $KAS_BUILD_DIR/tmp"
+    rm -rf "$KAS_BUILD_DIR/tmp"
+fi
+# A kept TMPDIR accumulates one timestamped rootfs set (~110 MB) per build:
+# keep only the last two days of deploy images
+find "$KAS_BUILD_DIR/tmp/deploy/images" -type f -name '*.rootfs-2*' -mtime +2 -delete 2>/dev/null || true
 
 # Protected main only: report hash equivalences to the central hashserv as
 # "ci-reporter". The token comes from a CI variable scoped to environment
