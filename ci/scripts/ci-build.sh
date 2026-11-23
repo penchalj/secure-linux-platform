@@ -30,6 +30,9 @@ if [[ -n "${HASHSERV_REPORT_TOKEN:-}" ]]; then
     ( umask 077
       printf 'machine %s login %s password %s\n' "${HASHSERV_ADDRESS:-hashserv:8686}" \
           "${HASHSERV_REPORT_USER:-ci-reporter}" "$HASHSERV_REPORT_TOKEN" > "$HOME/.netrc" )
+    # kas runs bitbake with an isolated, temporary HOME: a plain ~/.netrc is
+    # never seen. NETRC_FILE makes kas copy it into that home (incident #15).
+    export NETRC_FILE="$HOME/.netrc"
     KAS_FEATURES+=":kas/features/ci-report.yml"
     echo "hashserv: reporting as ${HASHSERV_REPORT_USER:-ci-reporter}"
 else
