@@ -1,0 +1,16 @@
+# =============================================================================
+# PR service for UNTRUSTED builds (MRs, feature branches) - v0.3 step 3c.
+#
+# BitBake starts a local, throw-away PR server that asks the central prserv
+# (upstream) for existing revisions but stores new ones only locally. So MR
+# builds get the same PKGR (r0.0, ...) as main - identical outputs, full
+# sstate reuse from the mirror - without ever advancing the central counters.
+# Protected main uses ci-prserv.yml (central, writing) instead.
+# =============================================================================
+header:
+  version: 18
+
+local_conf_header:
+  31-ci-prserv: |
+    PRSERV_HOST = "localhost:0"
+    PRSERV_UPSTREAM = "prserv:8585"
