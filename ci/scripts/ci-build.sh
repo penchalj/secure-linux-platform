@@ -41,7 +41,8 @@ if [[ "${CI_COMMIT_REF_PROTECTED:-false}" == "true" ]]; then
     KAS_FEATURES+=":kas/features/ci-prserv.yml"
     echo "prserv: central (prserv:8585)"
 else
-    echo "prserv: local (throw-away)"
+    KAS_FEATURES+=":kas/features/ci-prserv-ro.yml"
+    echo "prserv: local, upstream prserv:8585 (read-only)"
 fi
 
 config="$CI_PROJECT_DIR/kas/machines/${MACHINE}.yml"
