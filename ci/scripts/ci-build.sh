@@ -22,6 +22,20 @@ mkdir -p "$KAS_WORK_DIR" "$DL_DIR" "$SSTATE_DIR"
 # leftovers of a previous job (reproducible, measurable)
 rm -rf "$KAS_BUILD_DIR/tmp"
 
+# Protected main only: report hash equivalences to the central hashserv as
+# "ci-reporter". The token comes from a CI variable scoped to environment
+# "cache-report" (protected, masked) and goes to ~/.netrc - never to local.conf
+# or the log. Without the token (MRs, branches) builds stay anonymous/read-only.
+if [[ -n "${HASHSERV_REPORT_TOKEN:-}" ]]; then
+    ( umask 077
+      printf 'machine %s login %s password %s\n' "${HASHSERV_ADDRESS:-hashserv:8686}" \
+          "${HASHSERV_REPORT_USER:-ci-reporter}" "$HASHSERV_REPORT_TOKEN" > "$HOME/.netrc" )
+    KAS_FEATURES+=":kas/features/ci-report.yml"
+    echo "hashserv: reporting as ${HASHSERV_REPORT_USER:-ci-reporter}"
+else
+    echo "hashserv: anonymous (read-only)"
+fi
+
 config="$CI_PROJECT_DIR/kas/machines/${MACHINE}.yml"
 IFS=':' read -ra overlays <<< "$KAS_FEATURES"
 for o in "${overlays[@]}"; do config+=":$CI_PROJECT_DIR/$o"; done

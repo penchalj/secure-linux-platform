@@ -1,0 +1,16 @@
+# =============================================================================
+# Hash-equivalence REPORTING (v0.3 step 3c) - protected main only.
+#
+# Talks to the central hashserv directly instead of the local "auto" server,
+# so equivalences found on main are shared with every runner. Requires the
+# user "ci-reporter" (@read @report); BitBake reads its token from ~/.netrc
+# ("machine hashserv:8686"), written by ci-build.sh from an environment-scoped
+# CI variable. No credential appears in this file, local.conf or build.log.
+# MR / feature-branch builds never load this overlay: anonymous = @read only.
+# =============================================================================
+header:
+  version: 18
+
+local_conf_header:
+  30-ci-report: |
+    BB_HASHSERVE = "hashserv:8686"
