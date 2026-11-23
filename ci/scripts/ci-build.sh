@@ -36,6 +36,14 @@ else
     echo "hashserv: anonymous (read-only)"
 fi
 
+# Protected refs only: package revisions from the central PR service
+if [[ "${CI_COMMIT_REF_PROTECTED:-false}" == "true" ]]; then
+    KAS_FEATURES+=":kas/features/ci-prserv.yml"
+    echo "prserv: central (prserv:8585)"
+else
+    echo "prserv: local (throw-away)"
+fi
+
 config="$CI_PROJECT_DIR/kas/machines/${MACHINE}.yml"
 IFS=':' read -ra overlays <<< "$KAS_FEATURES"
 for o in "${overlays[@]}"; do config+=":$CI_PROJECT_DIR/$o"; done
