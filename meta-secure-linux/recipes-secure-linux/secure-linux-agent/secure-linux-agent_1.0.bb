@@ -16,6 +16,9 @@ SYSTEMD_AUTO_ENABLE = "enable"
 
 # Stricter hardening for our own code (distro-wide flags come from oe-core)
 CFLAGS:append = " -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -fstack-clash-protection"
+# Zero-initialise automatic variables (KSPP recommendation, GCC >= 12):
+# removes a whole class of uninitialised-stack info leaks
+CFLAGS:append = " -ftrivial-auto-var-init=zero"
 CFLAGS:append:x86-64 = " -fcf-protection=full"
 
 do_compile () {

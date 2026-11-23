@@ -26,7 +26,6 @@ local_conf_header:
         https://.*/.* http://downloads.web.garage:3902/ \
     "
     BB_HASHSERVE_UPSTREAM = "hashserv:8686"
-    # Enabled one at a time after a hit-rate baseline (v0.3 step 3), so any
-    # effect on task signatures shows up in the sstate metrics:
-    # PRSERV_HOST = "prserv:8585"
+    # Enabled after a hit-rate baseline (v0.3 step 3c); PRSERV_HOST lives in
+    # ci-prserv.yml (protected main only):
     # BB_GENERATE_MIRROR_TARBALLS = "1"

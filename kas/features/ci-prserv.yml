@@ -1,0 +1,15 @@
+# =============================================================================
+# Central PR service (v0.3 step 3c) - protected main only.
+#
+# Package revisions (PKGR) come from the shared prserv, so every main build on
+# every runner hands out monotonic, never-reused revisions - a prerequisite
+# for package feeds and signed OTA updates (v0.7). MR / branch builds never
+# load this overlay: they use BitBake's local throw-away PR server and cannot
+# advance the central counters.
+# =============================================================================
+header:
+  version: 18
+
+local_conf_header:
+  31-ci-prserv: |
+    PRSERV_HOST = "prserv:8585"
