@@ -64,6 +64,12 @@ build:qemux86-64:
       user: root
   timeout: 8h
   needs: [lint:yaml]
+  # Gives this job the CI variables scoped to "cache-report" (hashserv report
+  # token). They are protected, so only protected main receives them; MR
+  # pipelines run the same job anonymously. "prepare" = no deployment record.
+  environment:
+    name: cache-report
+    action: prepare
   variables:
     MACHINE: qemux86-64
     BUILD_UID: "1000"     # owner of /srv/yocto/cache on the runner host
