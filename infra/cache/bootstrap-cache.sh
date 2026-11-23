@@ -40,6 +40,18 @@ if [[ ! -f "$conf" ]]; then
   chmod 600 "$conf"
 fi
 
+# hashserv access control (v0.3 step 3c): anonymous clients may only READ
+# hash equivalences; reporting needs a user with @report (CI on protected main).
+# Admin credentials live only here (0600), never in the repo or on a command line.
+hsenv="$SLP_SERVICES_DIR/hashserv/hashserv.env"
+if [[ ! -f "$hsenv" ]]; then
+  log "Creating hashserv.env (anonymous @read, admin user)"
+  ( umask 077
+    printf '%s\n' "HASHSERVER_ANON_PERMS=@read" \
+                   "HASHSERVER_ADMIN_USER=slp-admin" \
+                   "HASHSERVER_ADMIN_PASSWORD=$(openssl rand -hex 32)" > "$hsenv" )
+fi
+
 log "Starting services"
 docker compose -f "$here/docker-compose.yml" up -d
 garage() { docker compose -f "$here/docker-compose.yml" exec -T garage /garage "$@"; }
