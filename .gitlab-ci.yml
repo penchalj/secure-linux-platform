@@ -34,7 +34,10 @@ workflow:
     - if: $CI_COMMIT_REF_PROTECTED == "true"
       variables:
         RUNNER_TAG: yocto
-    - if: $CI_COMMIT_BRANCH || $CI_COMMIT_TAG
+    # Feature branches build ONLY through their merge request: a plain push
+    # (e.g. `git push -o merge_request.create`) would otherwise start a second,
+    # duplicate branch pipeline. Manual runs from the UI stay possible.
+    - if: $CI_PIPELINE_SOURCE == "web"
       variables:
         RUNNER_TAG: yocto-untrusted
 
@@ -64,6 +67,19 @@ build:qemux86-64:
       user: root
   timeout: 8h
   needs: [lint:yaml]
+  # MRs that touch nothing build-relevant (docs, README, infra notes) skip the
+  # Yocto build entirely; protected refs always build (cheap with warm TMPDIR)
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - meta-secure-linux/**/*
+        - kas/**/*
+        - ci/scripts/ci-build.sh
+        - ci/scripts/cache_stats.py
+        - .gitlab-ci.yml
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: never
+    - when: on_success
   # Gives this job the CI variables scoped to "cache-report" (hashserv report
   # token). They are protected, so only protected main receives them; MR
   # pipelines run the same job anonymously. "prepare" = no deployment record.
@@ -103,6 +119,7 @@ build:fresh-runner:
   extends: build:qemux86-64
   variables:
     FRESH_RUNNER: "1"
+    CLEAN_TMP: "1"
     DL_DIR: /cache/yocto/ci/fresh/downloads
     SSTATE_DIR: /cache/yocto/ci/fresh/sstate-cache
     KAS_BUILD_DIR: /cache/yocto/ci/build-fresh
