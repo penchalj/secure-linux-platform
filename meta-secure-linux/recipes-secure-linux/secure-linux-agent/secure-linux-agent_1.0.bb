@@ -1,4 +1,7 @@
 SUMMARY = "Secure Linux device agent (sandboxed systemd service)"
+DESCRIPTION = "Demo device agent built with strict hardening flags and shipped as a \
+sandboxed systemd service running as an unprivileged user."
+HOMEPAGE = "https://gitlab.com/secure-linux/secure-linux-platform"
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 

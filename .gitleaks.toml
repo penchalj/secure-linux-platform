@@ -1,12 +1,18 @@
 title = "Secure Linux gitleaks config"
+
 [extend]
 useDefault = true
 
 [[rules]]
 id = "private-key-pem"
-description = "PEM private key (RAUC / GPG / TLS) committed to the repo"
+description = "PEM/armored private key (RAUC / GPG / TLS) committed to the repo"
 regex = '''-----BEGIN ((RSA|EC|OPENSSH|PGP) )?PRIVATE KEY( BLOCK)?-----'''
 tags = ["key", "signing"]
 
-[allowlist]
-paths = ['''docs/.*\.md''']
+# GPG key fingerprints / long key IDs are public identifiers (they identify the
+# signing key, they cannot sign). Narrow allowlist: only these two variables,
+# only hex values. Everything else in the same files is still scanned.
+[[allowlists]]
+description = "Public GPG key fingerprints for signed sstate (not secrets)"
+regexTarget = "line"
+regexes = ['''^\s*(SSTATE_SIG_KEY|SSTATE_VALID_SIGS)\s*=\s*"[0-9A-F ]+"\s*$''']

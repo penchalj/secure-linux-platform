@@ -1,0 +1,6 @@
+# DL3008 (pin apt package versions): Debian packages are pinned implicitly by
+# the base image (kas, referenced by version/digest). Explicit pkg=version pins
+# break on every Debian point release; package versions are captured in the
+# container SBOM instead (v0.7).
+ignored:
+  - DL3008
