@@ -49,6 +49,7 @@ default:
   tags: [$RUNNER_TAG]
 
 variables:
+  AST_ENABLE_MR_PIPELINES: "true"   # run GitLab SAST in MR pipelines, not only branch pipelines
   KAS_IMAGE: "ghcr.io/siemens/kas/kas:5.5"
   # v0.4 lint toolchain - pinned versions (Renovate bumps them)
   SHELLCHECK_IMAGE: "koalaman/shellcheck-alpine:v0.11.0"
