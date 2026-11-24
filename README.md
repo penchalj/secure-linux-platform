@@ -64,3 +64,4 @@ These items are marked `VERIFY` in the code. They depend on exact upstream versi
 - Hardware-in-the-loop with labgrid/LAVA on a real i.MX8 or Raspberry Pi 4
 - Grafana dashboard for `cache-stats-*.json` and DORA metrics
 - Merge trains + Premium "Security policies" (scan execution / MR approval policies)
+
