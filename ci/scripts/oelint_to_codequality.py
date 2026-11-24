@@ -19,7 +19,7 @@ def main() -> int:
             issues.append({
                 "description": f"{rule}: {msg}",
                 "check_name": rule,
-                "fingerprint": hashlib.sha1(raw.encode()).hexdigest(),
+                "fingerprint": hashlib.sha256(raw.encode()).hexdigest(),
                 "severity": SEVERITY.get(sev, "info"),
                 "location": {"path": path, "lines": {"begin": int(line) if line.isdigit() else 1}},
             })
