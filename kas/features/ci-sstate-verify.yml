@@ -1,0 +1,19 @@
+# =============================================================================
+# Signed sstate - VERIFY (v0.3 step 4) - every CI build (MR and main).
+#
+# An sstate object (local or from the mirror) is only installed if its
+# detached GPG signature (.tar.zst.sig) is valid and made by a key listed in
+# SSTATE_VALID_SIGS; otherwise BitBake rejects it and rebuilds the task.
+# The public key comes from keys/sstate-signing.pub.asc (ci-build.sh imports
+# it into GPG_PATH). SSTATE_VALID_SIGS has [vardepvalue] = "" in sstate.bbclass,
+# so none of this changes task signatures.
+# =============================================================================
+header:
+  version: 18
+
+local_conf_header:
+  40-sstate-verify: |
+    SSTATE_VERIFY_SIG = "1"
+    SSTATE_VALID_SIGS = "E17F42F0B73B02DB AB9A79A7FFC4409C75D352C2E17F42F0B73B02DB"
+    GPG_BIN = "/usr/bin/gpg"
+    GPG_PATH = "/builder/.sstate-gnupg"
