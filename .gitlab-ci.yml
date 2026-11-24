@@ -70,8 +70,11 @@ lint:yaml:
   extends: .lint
   image: python:3.12-slim
   script:
-    - pip install --quiet --no-cache-dir "yamllint==1.*"
+    - pip install --quiet --no-cache-dir "yamllint==1.*" "check-jsonschema==0.39.0"
     - yamllint -c .yamllint kas/ .gitlab-ci.yml
+    # Valid YAML is not enough: validate against the GitLab CI schema
+    # (catches e.g. "key: value" parsed as a mapping inside script:)
+    - check-jsonschema --builtin-schema vendor.gitlab-ci .gitlab-ci.yml
 
 lint:shell:
   extends: .lint
@@ -104,7 +107,7 @@ lint:recipes:
         $(find meta-secure-linux -name '*.bb' -o -name '*.bbappend') > oelint.txt 2>&1 || true
     - cat oelint.txt
     - python3 ci/scripts/oelint_to_codequality.py oelint.txt > gl-code-quality-oelint.json
-    - echo "errors: $(grep -c ':error:' oelint.txt || true)"
+    - echo "oelint errors=$(grep -c ':error:' oelint.txt || true)"
     - "! grep -q ':error:' oelint.txt"
   artifacts:
     when: always
