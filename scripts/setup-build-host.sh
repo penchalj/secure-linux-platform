@@ -121,7 +121,6 @@ install -d -o "$TARGET_USER" -g "$TARGET_USER" \
     "${DATA_MNT}/cache/downloads" \
     "${DATA_MNT}/cache/sstate-cache" \
     "${DATA_MNT}/cache/cve-db" \
-    "${DATA_MNT}/services/minio" \
     "${DATA_MNT}/services/hashserv" \
     "${DATA_MNT}/services/prserv"
 install -d -o 999 -g 999 "${DATA_MNT}/runner-builds"

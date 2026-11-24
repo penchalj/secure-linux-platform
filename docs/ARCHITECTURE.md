@@ -18,8 +18,8 @@ flowchart LR
   end
 
   subgraph Cache[shared cache services]
-    S3[(MinIO S3<br/>sstate + downloads)]
-    NG[nginx RO mirror]
+    S3[(Garage S3<br/>sstate + downloads)]
+    NG[Garage web endpoint (read-only)]
     HS[bitbake-hashserv]
     PR[bitbake-prserv]
     RC[(GitLab runner cache<br/>kas repos, CVE DB)]
@@ -56,7 +56,7 @@ kas/
   base.lock.yml            (generated) exact commits - `kas lock kas/base.yml`
   machines/                qemux86-64, qemuarm64 (add real BSPs here)
   features/
-    ci-cache.yml           L1-L4 cache wiring, signature verification
+    ci-mirror.yml          mirror + hashserv; ci-report/ci-prserv/ci-sstate-* overlays
     sstate-sign.yml        producer-side sstate signing (protected refs)
     security.yml           SPDX, VEX, cve-check, sbom-cve-check, licenses
     test.yml               test-only image tweaks (never released)
@@ -66,7 +66,7 @@ ci/templates/              pipeline split by concern (included from .gitlab-ci.y
 ci/scripts/                gates and converters (Python stdlib + PyYAML only)
 ci/policies/               kconfig + license policy (CODEOWNERS-protected)
 docker/                    build container
-infra/                     cache services (compose), runner config, MinIO policies
+infra/                     cache services (Garage, hashserv, prserv), runner config
 docs/                      this documentation
 ```
 

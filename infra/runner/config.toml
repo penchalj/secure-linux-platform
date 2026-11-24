@@ -1,7 +1,7 @@
 # =============================================================================
 # GitLab Runner config for the Yocto fleet (docker executor).
 # Two cache tiers:
-#   [runners.cache]          -> GitLab `cache:` keyword, stored in S3 (MinIO)
+#   [runners.cache]          -> GitLab `cache:` keyword, stored in S3 (Garage)
 #                               shared by ALL runners (kas repos, CVE DB, pip)
 #   volumes "/cache/yocto"   -> persistent host volume for sstate + downloads
 #                               (too big for zip-based GitLab cache)
@@ -23,7 +23,7 @@ check_interval = 3
     Shared = true
     MaxUploadedArchiveSize = 0
     [runners.cache.s3]
-      ServerAddress = "minio.example.internal:9000"
+      ServerAddress = "garage:3900"
       BucketName = "gitlab-runner-cache"
       BucketLocation = "eu-central-1"
       Insecure = false
