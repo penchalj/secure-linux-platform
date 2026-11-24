@@ -11,6 +11,9 @@
 # lives in ci/target-pipeline.gitlab-ci.yml and is enabled per milestone.
 # =============================================================================
 
+include:
+  - template: Jobs/SAST.gitlab-ci.yml
+
 stages:
   - lint
   - build
@@ -47,14 +50,99 @@ default:
 
 variables:
   KAS_IMAGE: "ghcr.io/siemens/kas/kas:5.5"
+  # v0.4 lint toolchain - pinned versions (Renovate bumps them)
+  SHELLCHECK_IMAGE: "koalaman/shellcheck-alpine:v0.11.0"
+  HADOLINT_IMAGE: "hadolint/hadolint:v2.15.1-alpine"
+  GITLEAKS_IMAGE: "zricethezav/gitleaks:v8.30.1"
+  OELINT_VERSION: "8.2.2"
   RCLONE_IMAGE: "rclone/rclone:1.76.0"
 
-lint:yaml:
+# ---------------------------------------------------------------------------
+# Shift-left gates (v0.4): seconds, before any runner-hour goes into bitbake.
+# Blocking: yaml, shell (warning+), Dockerfile (warning+), recipes (error),
+# kernel hardening policy, secrets. SAST (Semgrep) reports only.
+# ---------------------------------------------------------------------------
+.lint:
   stage: lint
+  needs: []
+
+lint:yaml:
+  extends: .lint
   image: python:3.12-slim
   script:
-    - pip install --quiet --no-cache-dir yamllint
+    - pip install --quiet --no-cache-dir "yamllint==1.*"
     - yamllint -c .yamllint kas/ .gitlab-ci.yml
+
+lint:shell:
+  extends: .lint
+  image: $SHELLCHECK_IMAGE
+  script:
+    - shellcheck --version | grep '^version'
+    - shellcheck -x --severity=warning ci/scripts/*.sh infra/cache/*.sh scripts/*.sh
+
+lint:dockerfile:
+  extends: .lint
+  image:
+    name: $HADOLINT_IMAGE
+    entrypoint: [""]
+  script:
+    - hadolint --format gitlab_codeclimate docker/Dockerfile > gl-code-quality-hadolint.json || true
+    - hadolint --failure-threshold warning docker/Dockerfile
+  artifacts:
+    when: always
+    reports:
+      codequality: gl-code-quality-hadolint.json
+
+lint:recipes:
+  extends: .lint
+  image: python:3.12-slim
+  script:
+    - pip install --quiet --no-cache-dir "oelint-adv==$OELINT_VERSION"
+    # oelint-adv does not know "wrynose" yet: "latest" = newest rule set
+    - oelint-adv --release latest --quiet --relpaths
+        --messageformat "{path}:{line}:{severity}:{id}:{msg}"
+        $(find meta-secure-linux -name '*.bb' -o -name '*.bbappend') > oelint.txt 2>&1 || true
+    - cat oelint.txt
+    - python3 ci/scripts/oelint_to_codequality.py oelint.txt > gl-code-quality-oelint.json
+    - echo "errors: $(grep -c ':error:' oelint.txt || true)"
+    - "! grep -q ':error:' oelint.txt"
+  artifacts:
+    when: always
+    paths: [oelint.txt]
+    reports:
+      codequality: gl-code-quality-oelint.json
+
+lint:kernel-hardening:
+  extends: .lint
+  image: python:3.12-slim
+  script:
+    - pip install --quiet --no-cache-dir "PyYAML==6.*"
+    - python3 ci/scripts/check_kconfig.py
+        meta-secure-linux/recipes-kernel/linux/files/secure-linux-kmeta/features/secure-linux/hardening.cfg
+        --policy ci/policies/kconfig-required.yml
+
+secrets:gitleaks:
+  extends: .lint
+  image:
+    name: $GITLEAKS_IMAGE
+    entrypoint: [""]
+  variables:
+    GIT_DEPTH: "0"                       # scan the whole history, not just the tip
+    GIT_CONFIG_COUNT: "1"                # job may run as a non-root user
+    GIT_CONFIG_KEY_0: safe.directory
+    GIT_CONFIG_VALUE_0: "*"
+  script:
+    - gitleaks version
+    - gitleaks git --config .gitleaks.toml --redact --no-banner
+        --report-format sarif --report-path gitleaks.sarif .
+  artifacts:
+    when: always
+    paths: [gitleaks.sarif]
+
+# GitLab SAST (Semgrep for the C code); report only, does not gate the build
+sast:
+  stage: lint
+  needs: []
 
 build:qemux86-64:
   stage: build
@@ -66,7 +154,8 @@ build:qemux86-64:
     docker:
       user: root
   timeout: 8h
-  needs: [lint:yaml]
+  # Every blocking gate must be green before a Yocto build starts
+  needs: [lint:yaml, lint:shell, lint:dockerfile, lint:recipes, lint:kernel-hardening, secrets:gitleaks]
   # MRs that touch nothing build-relevant (docs, README, infra notes) skip the
   # Yocto build entirely; protected refs always build (cheap with warm TMPDIR)
   rules:

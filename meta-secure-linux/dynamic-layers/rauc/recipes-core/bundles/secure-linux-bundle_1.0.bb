@@ -1,4 +1,8 @@
+# nooelint: oelint.var.mandatoryvar.SRC_URI - bundle.bbclass packs the built image, the recipe has no sources
 SUMMARY = "Signed RAUC A/B update bundle for Secure Linux Platform (CRA: secure updates)"
+DESCRIPTION = "RAUC A/B update bundle for secure-linux-image, signed with the platform \
+update key (secure software updates, EU CRA / UNECE R156)."
+HOMEPAGE = "https://gitlab.com/secure-linux/secure-linux-platform"
 LICENSE = "MIT"
 
 inherit bundle

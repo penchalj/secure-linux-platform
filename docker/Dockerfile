@@ -12,6 +12,8 @@ ARG COSIGN_VERSION=2.4.1
 ARG ORAS_VERSION=1.2.0
 
 USER root
+# Fail RUN pipelines on the first failing command (hadolint DL4006)
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Cache apt between builds (BuildKit cache mount, not baked into the layer)
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -23,7 +25,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 # Pinned CLI tools with checksum verification
 COPY docker/checksums.txt /tmp/checksums.txt
-RUN set -eux; cd /tmp; \
+WORKDIR /tmp
+RUN set -eux; \
     curl -fsSLO "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-amd64"; \
     curl -fsSLO "https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/oras_${ORAS_VERSION}_linux_amd64.tar.gz"; \
     grep -E "cosign-linux-amd64|oras_${ORAS_VERSION}" checksums.txt | sha256sum -c -; \
@@ -34,6 +37,7 @@ RUN set -eux; cd /tmp; \
 COPY ci/scripts/ /opt/secure-linux/ci/
 RUN chmod 0755 /opt/secure-linux/ci/*.sh
 
+WORKDIR /builder
 USER builder
 LABEL org.opencontainers.image.title="secure-linux-yocto-builder" \
       org.opencontainers.image.source="${CI_PROJECT_URL}" \

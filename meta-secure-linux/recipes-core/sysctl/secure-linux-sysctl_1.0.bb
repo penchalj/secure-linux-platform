@@ -1,4 +1,7 @@
 SUMMARY = "Secure Linux Platform kernel runtime hardening sysctls"
+DESCRIPTION = "Kernel runtime hardening via sysctl: restricts kernel pointers, dmesg, \
+ptrace and BPF, and enables network stack protections."
+HOMEPAGE = "https://gitlab.com/secure-linux/secure-linux-platform"
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 

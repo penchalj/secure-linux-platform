@@ -16,7 +16,8 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 export SLP_SERVICES_DIR="${SLP_SERVICES_DIR:-/srv/yocto/services}"
 export SLP_BITBAKE_DIR="${SLP_BITBAKE_DIR:-/srv/yocto/cache/ci/work/bitbake}"
-export SLP_UID="$(id -u)" SLP_GID="$(id -g)"
+SLP_UID="$(id -u)"; SLP_GID="$(id -g)"
+export SLP_UID SLP_GID
 GARAGE_CAPACITY="${GARAGE_CAPACITY:-100G}"
 
 log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
