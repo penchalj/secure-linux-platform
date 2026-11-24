@@ -63,6 +63,19 @@ IFS=':' read -ra overlays <<< "$KAS_FEATURES"
 for o in "${overlays[@]}"; do config+=":$CI_PROJECT_DIR/$o"; done
 echo "kas config: $config"
 
+# Maintenance mode (manual job on main): re-run do_fetch for every recipe of
+# the image so existing git clones get their mirror tarballs; the next
+# publish:cache uploads them. Removing the git done-stamps forces the fetcher
+# to revisit each clone (incremental git fetch, then tarball creation).
+if [[ "${FETCH_ALL:-0}" == "1" ]]; then
+    before=$(ls -1 "$DL_DIR"/git2_*.tar.gz 2>/dev/null | wc -l)
+    rm -f "$DL_DIR"/git2/*.done
+    kas shell "$config" -c "bitbake --runall=fetch secure-linux-image" 2>&1 | tee build.log
+    after=$(ls -1 "$DL_DIR"/git2_*.tar.gz 2>/dev/null | wc -l)
+    echo "git mirror tarballs: before=${before} after=${after}" | tee fetch-all.txt
+    exit 0
+fi
+
 kas build "$config" 2>&1 | tee build.log
 
 python3 ci/scripts/cache_stats.py build.log --machine "$MACHINE" \

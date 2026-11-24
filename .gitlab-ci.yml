@@ -128,6 +128,24 @@ build:fresh-runner:
       when: manual
       allow_failure: true
 
+# Maintenance (manual, main only): fetch every source of the image so git
+# sources get mirror tarballs (BB_GENERATE_MIRROR_TARBALLS); the next main
+# pipeline's publish:cache uploads them to the download mirror.
+maintenance:fetch-all:
+  extends: build:qemux86-64
+  variables:
+    FETCH_ALL: "1"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+      allow_failure: true
+  artifacts:
+    when: always
+    expire_in: 4 weeks
+    paths:
+      - build.log
+      - fetch-all.txt
+
 # Write path of the shared cache (v0.3 step 3b). The ONLY job with mirror
 # write credentials: protected default branch, trusted runner, credentials
 # scoped to environment "cache-publish" (every publish is a deployment in

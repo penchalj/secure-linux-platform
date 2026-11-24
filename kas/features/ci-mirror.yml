@@ -26,6 +26,8 @@ local_conf_header:
         https://.*/.* http://downloads.web.garage:3902/ \
     "
     BB_HASHSERVE_UPSTREAM = "hashserv:8686"
-    # Enabled after a hit-rate baseline (v0.3 step 3c); PRSERV_HOST lives in
-    # ci-prserv.yml (protected main only):
-    # BB_GENERATE_MIRROR_TARBALLS = "1"
+    # git/svn sources also become tarballs in DL_DIR (git2_*.tar.gz), which
+    # publish:cache uploads to the download mirror: fresh runners and future
+    # rebuilds no longer depend on upstream git servers. Not part of any task
+    # signature (read only by the fetcher), so safe for MR and main alike.
+    BB_GENERATE_MIRROR_TARBALLS = "1"
