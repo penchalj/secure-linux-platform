@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Remove sstate objects not accessed for N days from the local runner cache.
-# The S3 mirror uses a bucket lifecycle rule instead (infra/minio/lifecycle.json).
+# The Garage mirror is write-once; pruning it is a planned maintenance job.
 set -euo pipefail
 days="${1:-30}"
 : "${SLP_CACHE_DIR:=/cache/yocto}"

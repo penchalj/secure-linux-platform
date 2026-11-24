@@ -1,79 +1,87 @@
-# Caching design
+# Build cache and cache security
 
-The goal: a clean MR pipeline for a full image should take **minutes, not hours**.
-A cold Wrynose `core-image` build runs for 1–3 h on 16 cores. With a warm cache,
-the same build replays from sstate in roughly 5–15 min.
+Yocto rebuilds are only fast if build results can be reused safely. This platform
+combines five cache levels with a trust model that keeps untrusted code (merge
+requests) from ever writing to shared state.
 
-## The layers
+## Cache levels
 
-| Level | What | Where it lives | Key / invalidation | Writers |
-|---|---|---|---|---|
-| L0 | Build container layers | GitLab registry (`builder:buildcache`, BuildKit `mode=max`) | Dockerfile instruction hash | `build-container` (on `docker/**` changes) |
-| L1 | Source downloads (`DL_DIR`) | Runner volume `/cache/yocto/downloads` → S3 `secure-linux-downloads` (via `own-mirrors`) | URL + checksum | Protected refs only |
-| L2 | Shared state (`SSTATE_DIR`) | Runner volume `/cache/yocto/sstate-cache` → S3 `secure-linux-sstate` via nginx (`SSTATE_MIRRORS`) | Task signature hash | Protected refs only, **GPG-signed** |
-| L3 | Hash equivalence | `bitbake-hashserv` (`BB_HASHSERVE_UPSTREAM`) | Output hash → many input hashes | Protected refs |
-| L4 | Package revisions | `bitbake-prserv` (`PRSERV_HOST`) | Recipe + checksum | Protected refs |
-| G1 | kas layer checkouts | GitLab `cache:` keyed on `kas/base.lock.yml` | Lock file content | Protected refs (`pull-push`) |
-| G2 | NVD CVE database | GitLab `cache:` `cve-db-main` | Nightly refresh | `maintenance:cve-db-refresh` only |
-| G3 | pip / Trivy DB | GitLab `cache:` | Requirements file / fixed key | Lint jobs |
+| Level | What | Where | Who writes |
+|---|---|---|---|
+| L1 | TMPDIR (parse cache, stamps → tasks stay "Current") | runner volume, per runner | the runner itself |
+| L2 | local sstate + downloads | runner volume, per runner | the runner itself |
+| L3 | **sstate mirror** (`SSTATE_MIRRORS`) and **download mirror** (`PREMIRRORS`, incl. git mirror tarballs) | Garage S3, read-only HTTP endpoint `:3902` | `publish:cache` on protected `main` only (S3 API `:3900`) |
+| L4 | **hash equivalence** (unihash mapping) | `bitbake-hashserv` `:8686` | authenticated user `ci-reporter` (main) |
+| L5 | **package revisions** (PR service) | `bitbake-prserv` `:8585` | main; MRs use a local server with central upstream |
 
-## Why sstate is not in GitLab's `cache:` keyword
+sstate objects are named by **unihash**: the mirror (L3) and the hash-equivalence
+server (L4) only work together. A mirror without hashserv data reached 53 %; with
+it, 99 % (see INCIDENTS #10).
 
-This is the main design decision. It comes up in interviews.
+## Trust model
 
-1. **Size.** sstate grows to 50–300 GB. GitLab cache zips and unzips the whole path on every job, which takes longer than the build it saves.
-2. **Granularity.** sstate is content-addressed per *task*. A GitLab cache key is one string per job, so a single changed recipe would invalidate everything or nothing.
-3. **Sharing.** An S3/HTTP mirror lets every runner, developer laptop and nightly build share objects. A GitLab cache is scoped per project and per key.
+| Identity | Can | Used by |
+|---|---|---|
+| runner `vm-yocto-untrusted` | own volume only; mirror read-only; hashserv anonymous `@read`; PR read-through | MR and feature-branch builds |
+| runner `vm-yocto-builder` (Protected) | trusted cache volume | protected `main` and tags |
+| `ci-reporter` (hashserv) | `@read @report` | main build; token via environment `cache-report`, given to kas with `NETRC_FILE` |
+| `ci-publisher` (Garage key) | write `sstate` + `downloads` | `publish:cache` only; environment `cache-publish` |
+| sstate signing key | sign sstate objects | main build; `SSTATE_SIGNING_KEY_B64` in environment `cache-report` |
+| `slp-admin` (hashserv) | `@all` | operator on the build host only |
 
-GitLab `cache:` is used where it works well: small, hot data with a clear key (kas repos, the CVE DB, pip).
+All CI secrets are **Protected + Masked & hidden + environment-scoped**: each one is
+visible to exactly one job type on protected refs.
 
-## Hash equivalence (L3)
+## Signed sstate
 
-When a change doesn't alter a task's *output* (a comment in a recipe, a reordered
-variable), the input hash changes but the output hash stays the same. The hash
-server maps the new input hash to the existing sstate object, so downstream
-tasks are **reused instead of rebuilt**. Since Wrynose, `BB_SIGNATURE_HANDLER`
-defaults to `OEEquivHash` and `BB_HASHSERVE = "auto"`. We add
-`BB_HASHSERVE_UPSTREAM` so every runner learns from every other runner.
+* Every CI build sets `SSTATE_VERIFY_SIG = "1"` and accepts only the platform key
+  (`SSTATE_VALID_SIGS` = long key ID `E17F42F0B73B02DB`). An object without a valid
+  signature is rejected and its task is rebuilt (fail closed).
+* Only protected `main` signs (`SSTATE_SIG_KEY`); the public key is in
+  `keys/sstate-signing.pub.asc`.
+* `SSTATE_SIG_KEY` and `SSTATE_VALID_SIGS` are excluded from task signatures, so signing
+  does not split main and MR hashes.
+* Tamper demo: one object in the mirror was overwritten with modified content.
+  A fresh runner logged `Cannot verify signature … will run full task instead`
+  for exactly that object and installed none of its content.
+* Cost of fail-closed: on a fresh runner, rebuilding one rejected package pulls in its
+  whole build environment (compiler, sysroots) – a partial rebuild instead of a 1-s fetch.
 
-## Cache-poisoning protection (security!)
+## Write path
 
-A shared build cache is a supply-chain attack surface: if a malicious MR could
-write a tampered `glibc` sstate object, every later build would ship it.
+`publish:cache` (protected `main`, `resource_group: cache-publish`) copies new objects
+from the trusted cache to Garage with `rclone copy --ignore-existing --min-size 1B`:
 
-* MR pipelines get `CACHE_POLICY=pull` (read-only GitLab caches) and no S3 write
-  credentials. `cache-env.sh` actively unsets them.
-* GitLab separates protected and unprotected cache keys; `unprotect: false` stays explicit.
-* The sstate mirror is served **read-only** through nginx (`limit_except GET HEAD`).
-* Protected builds sign every sstate object (`SSTATE_SIG_KEY`). All consumers set
-  `SSTATE_VERIFY_SIG = "1"` and reject unsigned or foreign-signed objects.
-* `resource_group: sstate-publish-$MACHINE` stops two writers from racing on publish.
-* Recommended: a separate `yocto-mr` runner that mounts `/cache/yocto` read-only.
+* **write-once** – content-addressed objects are never overwritten
+* **no 0-byte objects** – crash leftovers once poisoned the mirror (INCIDENTS #11)
+* every run is a deployment in *Operate → Environments → cache-publish* (audit trail)
 
-## Observability
+## Efficiency
 
-`ci/scripts/cache_stats.py` parses bitbake's `Sstate summary` line and emits:
+* TMPDIR is kept between jobs; `CLEAN_TMP=1` restores the "everything from sstate" mode
+  (fresh-runner benchmark, after crashes). Old deploy images are pruned after 2 days.
+* Feature branches build only through their MR (no duplicate branch pipelines).
+* MRs without build-relevant changes skip the Yocto build.
+* `BB_GENERATE_MIRROR_TARBALLS = "1"` plus the manual `maintenance:fetch-all` job keep
+  git sources in the download mirror.
 
-* a **GitLab metrics report**. The MR widget shows `sstate_hit_rate_pct` against
-  the target branch, so a change that breaks caching shows up in review.
-* `cache-stats-<machine>.json` for Grafana / Prometheus.
+## Benchmarks
 
-Typical healthy values: hit rate > 95 % on MRs and missed tasks < 50.
+| Scenario | Time | sstate |
+|---|---|---|
+| Cold build | ~7 h 45 min | – |
+| Fresh runner (mirror only) | 24 min 34 s | Mirrors 2,684 · Missed 6 |
+| MR, empty untrusted volume, verified | 20 min 4 s | Mirrors 2,685 · 2,232 verified · 0 rejected |
+| Warm main (lint+build+publish) | 1 min 19 s – 1 min 33 s | Current ~2,237 |
+| Warm MR, small change | 1 min 14 s | Current 2,236 |
+| Docs-only MR | 18 s | build skipped |
+| One-time PR-server migration | 3 h 9 min | 67 % (see ADR 0003) |
 
-## Maintenance
+## Operations
 
-* `maintenance:sstate-prune` (nightly) deletes local objects with atime > 30 days.
-* S3 lifecycle rule expires mirror objects after 60 days (`infra/minio/`).
-* `maintenance:cve-db-refresh` updates the NVD DB once per night. Builds run with
-  `CVE_DB_UPDATE_INTERVAL = "-1"`, which avoids NVD rate limits and gives
-  reproducible CVE results within a day.
-
-## Local developer use
-
-Developers can point at the same mirrors read-only:
-
-```bash
-export SSTATE_MIRROR_URL=https://sstate.example.internal
-export HASHSERV_URL=hashserv.example.internal:8686
-kas build kas/machines/qemux86-64.yml:kas/features/ci-cache.yml
-```
+* Services: `infra/cache/docker-compose.yml` (Garage v2.3.0, hashserv, prserv), started by
+  `infra/cache/bootstrap-cache.sh`; secrets under `/srv/yocto/services` (0600), never in git.
+* Restore a manipulated or broken object: delete it locally and in Garage, let `main` rebuild,
+  publish (see INCIDENTS #11).
+* Host networking: host adapter power saving off plus a 1-minute reachability check
+  (`journalctl -t slp-dnscheck`), see INCIDENTS #17.

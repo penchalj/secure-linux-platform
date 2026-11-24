@@ -1,67 +1,85 @@
-# Secure Linux Platform: Yocto DevSecOps reference platform on GitLab
+# Secure Linux Platform
 
-A hardened embedded Linux distribution built with **Yocto 6.0 "Wrynose" LTS**
-(supported until April 2030). It ships with a production-grade **GitLab CI/CD**
-pipeline covering shift-left security, a multi-level build cache, SBOM and CVE
-gates, signed OTA updates, SLSA provenance and EU **Cyber Resilience Act** evidence.
+**A hardened Yocto 6.0 LTS ("Wrynose") reference platform with a GitLab DevSecOps pipeline:**
+multi-level build cache, cache-poisoning protection, signed build artifacts, SBOM, and a
+roadmap to signed OTA updates and EU Cyber Resilience Act evidence.
 
-| | |
+Source of truth: [gitlab.com/secure-linux/secure-linux-platform](https://gitlab.com/secure-linux/secure-linux-platform) ·
+Mirror: [github.com/penchalj/secure-linux-platform](https://github.com/penchalj/secure-linux-platform)
+
+## Results (measured on a 4-vCPU VM without KVM)
+
+| Scenario | Time | Notes |
+|---|---|---|
+| Cold build, full image | **~7 h 45 min** | 5,257 BitBake tasks |
+| Fresh runner, empty local caches | **24 min 34 s** | 2,684 of 2,690 objects from the S3 mirror (99 %) – **~19×** |
+| MR build, empty untrusted volume, **signature-verified** | **20 min 4 s** | 2,232 objects GPG-verified, 0 rejected |
+| Warm `main` (lint + build + publish) | **~1.5 min** | kept TMPDIR, ~2,237 tasks "Current" |
+| Warm MR with a small change | **~1.2 min** | |
+| Docs-only MR | **18 s** | Yocto build skipped |
+| Tamper demo | rejected | manipulated object in the mirror → `Cannot verify signature` → task rebuilt |
+
+## What is in here
+
+| Area | Implementation |
 |---|---|
-| Build | kas, Yocto Wrynose, `qemux86-64` + `qemuarm64` matrix |
-| Cache | Runner volume + S3/MinIO sstate & download mirrors, hash equivalence, PR server, GitLab `cache:` for kas/CVE DB, BuildKit registry cache → [docs/CACHING.md](docs/CACHING.md) |
-| Security | gitleaks, oelint-adv, SAST, Trivy, KSPP kernel policy, compiler hardening, rootfs audit, runtime oeqa hardening tests → [docs/SECURITY.md](docs/SECURITY.md) |
-| Supply chain | SPDX 3.0 SBOM + VEX, CVE gate, license gate, GPG-signed sstate, cosign keyless signing, SLSA provenance, Renovate |
-| Updates | RAUC A/B verity bundles signed with X.509 |
-| Compliance | CRA Annex I traceability → [docs/CRA-COMPLIANCE.md](docs/CRA-COMPLIANCE.md) |
+| Build | kas 5.5, Yocto 6.0 LTS (BitBake 2.18), lock-pinned layers, distro `secure-linux`, image `secure-linux-image` |
+| Hardening | oe-core security flags, FORTIFY_SOURCE=3 / CET / auto-var-init for own code, read-only rootfs, locked accounts, sysctl, nftables, audit, rootfs audit |
+| SBOM | SPDX 3.0.1 for every image, published as CI artifact |
+| Build cache | Garage S3 sstate + download mirrors, central hash-equivalence server, central PR server, git mirror tarballs, warm TMPDIR → [docs/CACHING.md](docs/CACHING.md) |
+| Cache security | trusted/untrusted runner split, write-once publish from protected `main` only, environment-scoped credentials, authenticated hashserv reporting, **GPG-signed sstate** |
+| Decisions | [docs/adr/](docs/adr/) · Lessons learned: [docs/INCIDENTS.md](docs/INCIDENTS.md) · History: [CHANGELOG.md](CHANGELOG.md) |
+
+## Architecture
+
+```
+        MR / feature branch                      protected main
+               │                                       │
+   ┌───────────▼───────────┐               ┌───────────▼───────────┐
+   │ runner yocto-untrusted│               │ runner yocto (Protected)│
+   │ own volume, anonymous │               │ trusted cache volume    │
+   └───────────┬───────────┘               └───────────┬───────────┘
+     read-only │ verify signatures          verify+sign │ report │ publish (write-once)
+   ┌───────────▼───────────────────────────────────────▼────────▼────────┐
+   │ Garage S3 (sstate, downloads) · hashserv (@read anon / @report CI)  │
+   │ · prserv (main writes, MRs read-through)                            │
+   └─────────────────────────────────────────────────────────────────────┘
+```
+
+## Pipeline (current)
+
+```
+lint      lint:yaml
+build     build:qemux86-64 · build:fresh-runner (manual) · maintenance:fetch-all (manual)
+publish   publish:cache   (protected main only, environment cache-publish)
+```
+
+The full target pipeline (lint/SAST, CVE + license gates, signing, releases) lives in
+`ci/target-pipeline.gitlab-ci.yml` and is enabled milestone by milestone.
 
 ## Quick start (local)
 
 ```bash
-pip install kas
-kas build kas/machines/qemux86-64.yml:kas/features/security.yml
-kas shell kas/machines/qemux86-64.yml -c "runqemu nographic slirp"
+pipx install kas
+export DL_DIR=/srv/yocto/cache/downloads SSTATE_DIR=/srv/yocto/cache/sstate-cache
+kas-container build kas/machines/qemux86-64.yml:kas/features/local-vm.yml
+kas-container shell kas/machines/qemux86-64.yml -c "runqemu nographic slirp"
 ```
 
-## GitLab setup
+Build host and CI infrastructure: `scripts/setup-build-host.sh` (host, runner),
+`infra/cache/bootstrap-cache.sh` (Garage, hashserv, prserv), `infra/cache/seed-cache.sh` (initial seed).
 
-1. **Cache services:** `cp infra/.env.example infra/.env && docker compose -f infra/docker-compose.yml up -d`,
-   then `infra/scripts/bootstrap-minio.sh`.
-2. **Runners:** register with tags `yocto` (and `kvm` where `/dev/kvm` exists),
-   using [infra/runner/config.toml](infra/runner/config.toml).
-3. **CI/CD variables:** see the secrets table in [docs/SECURITY.md](docs/SECURITY.md).
-   Override `SSTATE_MIRROR_URL`, `HASHSERV_URL` and the other endpoints in `ci/templates/variables.yml`.
-4. **Protect** `main` and tags `v*`. Add a protected environment `production` with approval.
-5. **Pin layers:** `kas lock kas/base.yml` and commit `kas/base.lock.yml`.
-6. **Schedule:** nightly pipeline (e.g. 02:00 Europe/Berlin) for CVE DB refresh, sstate prune and release rescan.
-7. **Dev keys:** `scripts/gen-dev-keys.sh` (git-ignored `keys/`).
+## Roadmap
 
-## Pipeline
+| Release | Scope | Status |
+|---|---|---|
+| v0.1 | Foundation: layer, distro, image, agent, kas lock | done |
+| v0.2 | CI backbone on a self-hosted runner | done |
+| v0.3 | Build acceleration + cache security | done |
+| v0.4 | Shift-left quality: oelint-adv, shellcheck, hadolint, gitleaks, SAST | next |
+| v0.5 | Supply chain: SBOM, CVE gate, VEX triage, license gate | |
+| v0.6 | Platform hardening: KSPP kernel, systemd sandboxing, oeqa runtime tests | |
+| v0.7 | Trusted release: cosign keyless, SLSA provenance, RAUC signed A/B updates | |
+| v1.0 | Compliance: CRA Annex I matrix, R155/R156 mapping, nightly release rescan | |
 
-```
-.pre      build-container ─ container:scan ─ container:sign      (+ nightly maintenance)
-lint      recipes · yaml-kas · shell · dockerfile · kernel-hardening · gitleaks · SAST · secrets
-build     build [qemux86-64, qemuarm64] · build:test-image
-test      test:qemu  (oeqa → JUnit)
-security  cve-gate · license-gate · sbom-upload · mr-comment
-publish   release:build · release:sign                            (tags only)
-release   release:publish → GitLab Release + Package Registry    (tags only, approval)
-```
-
-## Before the first real run, verify these
-
-These items are marked `VERIFY` in the code. They depend on exact upstream versions:
-
-- [ ] BitBake branch for Wrynose in `kas/base.yml` (Poky is split into bitbake / oe-core / meta-yocto since 6.0). Pin it with `kas lock`.
-- [ ] `meta-rauc` and `meta-security` have `wrynose` branches.
-- [ ] `sbom-cve-check` CLI flags in `ci/scripts/rescan-last-release.sh`.
-- [ ] Real SHA256 values in `docker/checksums.txt`, and the kas image tag.
-- [ ] `oelint-adv --release wrynose` is supported by the pinned oelint version.
-
-## Roadmap ideas
-
-- Secure boot chain (U-Boot FIT signing / UEFI + `systemd-ukify`, also new in Wrynose)
-- dm-verity rootfs + TPM2 measured boot (meta-security `meta-tpm`)
-- Hardware-in-the-loop with labgrid/LAVA on a real i.MX8 or Raspberry Pi 4
-- Grafana dashboard for `cache-stats-*.json` and DORA metrics
-- Merge trains + Premium "Security policies" (scan execution / MR approval policies)
-
+License: MIT
