@@ -137,8 +137,17 @@ secrets:gitleaks:
     GIT_CONFIG_VALUE_0: "*"
   script:
     - gitleaks version
-    - gitleaks git --config .gitleaks.toml --redact --no-banner
-        --report-format sarif --report-path gitleaks.sarif .
+    # Scan an explicit range, not 'git log --all': the runner reuses its clone, and
+    # refs of other pipelines (e.g. closed MRs) must not affect this result.
+    # MR: exactly the MR's commits. main: full history of this commit.
+    - |
+      if [ -n "${CI_MERGE_REQUEST_DIFF_BASE_SHA:-}" ]; then
+        RANGE="${CI_MERGE_REQUEST_DIFF_BASE_SHA}..${CI_COMMIT_SHA}"
+      else
+        RANGE="${CI_COMMIT_SHA}"
+      fi
+      echo "gitleaks range=${RANGE}"
+      gitleaks git --config .gitleaks.toml --redact --no-banner --log-opts="${RANGE}" --report-format sarif --report-path gitleaks.sarif .
   artifacts:
     when: always
     paths: [gitleaks.sarif]
