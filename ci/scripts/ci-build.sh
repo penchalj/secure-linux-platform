@@ -49,6 +49,20 @@ else
     echo "hashserv: anonymous (read-only)"
 fi
 
+# Signed sstate: every CI build verifies, only protected main signs.
+# Keyring lives in the job container (thrown away with it), never in the repo.
+export GNUPGHOME=/builder/.sstate-gnupg
+install -d -m 700 "$GNUPGHOME"
+gpg --batch --quiet --import "$CI_PROJECT_DIR/keys/sstate-signing.pub.asc"
+KAS_FEATURES+=":kas/features/ci-sstate-verify.yml"
+if [[ -n "${SSTATE_SIGNING_KEY_B64:-}" ]]; then
+    printf '%s' "$SSTATE_SIGNING_KEY_B64" | base64 -d | gpg --batch --quiet --import
+    KAS_FEATURES+=":kas/features/ci-sstate-sign.yml"
+    echo "sstate: verify + sign"
+else
+    echo "sstate: verify only"
+fi
+
 # Protected refs only: package revisions from the central PR service
 if [[ "${CI_COMMIT_REF_PROTECTED:-false}" == "true" ]]; then
     KAS_FEATURES+=":kas/features/ci-prserv.yml"
@@ -73,6 +87,7 @@ if [[ "${FETCH_ALL:-0}" == "1" ]]; then
     kas shell "$config" -c "bitbake --runall=fetch secure-linux-image" 2>&1 | tee build.log
     after=$(ls -1 "$DL_DIR"/git2_*.tar.gz 2>/dev/null | wc -l)
     echo "git mirror tarballs: before=${before} after=${after}" | tee fetch-all.txt
+    : > metrics.txt   # inherited metrics report: keep the artifact upload quiet
     exit 0
 fi
 

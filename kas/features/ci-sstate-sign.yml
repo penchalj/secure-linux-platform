@@ -1,0 +1,16 @@
+# =============================================================================
+# Signed sstate - SIGN (v0.3 step 4) - protected main only.
+#
+# Every new sstate object gets a detached signature from the platform signing
+# key. The private key exists only as the protected, masked, environment-scoped
+# CI variable SSTATE_SIGNING_KEY_B64 (environment "cache-report") and is
+# imported into GPG_PATH by ci-build.sh. SSTATE_SIG_KEY is excluded from task
+# signatures (sstate_package[vardepsexclude]), so signing does not split main
+# and MR hashes.
+# =============================================================================
+header:
+  version: 18
+
+local_conf_header:
+  41-sstate-sign: |
+    SSTATE_SIG_KEY = "AB9A79A7FFC4409C75D352C2E17F42F0B73B02DB"
