@@ -10,7 +10,7 @@
 set -euo pipefail
 
 : "${MACHINE:?}" "${KAS_WORK_DIR:?}" "${KAS_BUILD_DIR:?}" "${CI_PROJECT_DIR:?}"
-: "${KAS_FEATURES:=kas/features/local-vm.yml:kas/features/ci-mirror.yml}"
+: "${KAS_FEATURES:=kas/features/local-vm.yml:kas/features/ci-mirror.yml:kas/features/sbom-vex.yml}"
 cd "$CI_PROJECT_DIR"
 
 if [[ "${FRESH_RUNNER:-0}" == "1" ]]; then
