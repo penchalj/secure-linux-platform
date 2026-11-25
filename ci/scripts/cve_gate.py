@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""CRA vulnerability gate for Yocto cve-check JSON reports.
+"""CVE gate over a cve-check style JSON (sbom-cve-check export
+"yocto-cve-check-manifest").
 
 Policy:
-  * Status "Unpatched" with CVSS >= --max-cvss  -> FAIL (in enforce mode)
-  * Status "Ignored"/"Patched"                  -> PASS (triaged / fixed; VEX)
-  * Everything is written to JUnit (one testcase per CVE) so the GitLab MR
-    widget lists new findings, plus a Markdown summary for the MR note.
+  * status "Unpatched" with CVSS >= --max-cvss -> blocking (fails in enforce mode)
+  * status "Patched" / "Ignored"               -> pass (fixed, or triaged = VEX)
+Outputs: JUnit (one testcase per unpatched CVE, failures = blocking), a Markdown
+summary for the MR, and GitLab metrics so MRs show the trend.
 """
 import argparse
 import glob
 import json
 import sys
+from collections import Counter
 from xml.sax.saxutils import escape
 
 
@@ -20,14 +22,14 @@ def score(issue: dict) -> float:
     for key in ("scorev4", "scorev3", "scorev2"):
         try:
             vals.append(float(issue.get(key) or 0))
-        except ValueError:
+        except (TypeError, ValueError):
             pass
     return max(vals) if vals else 0.0
 
 
-def load(paths):
-    for pattern in paths:
-        for path in glob.glob(pattern):
+def load(patterns):
+    for pattern in patterns:
+        for path in sorted(glob.glob(pattern)):
             with open(path, encoding="utf-8") as fh:
                 data = json.load(fh)
             for pkg in data.get("package", []):
@@ -51,20 +53,25 @@ def main() -> int:
     ap.add_argument("--mode", choices=("enforce", "report"), default="enforce")
     ap.add_argument("--junit")
     ap.add_argument("--markdown")
+    ap.add_argument("--metrics")
     args = ap.parse_args()
 
     issues = list(load(args.cve_json))
+    if not issues:
+        print("CVE gate: no issues parsed - wrong input?", file=sys.stderr)
+        return 2
+    status = Counter(i["status"] for i in issues)
     unpatched = [i for i in issues if i["status"] == "Unpatched"]
     blocking = sorted((i for i in unpatched if i["cvss"] >= args.max_cvss),
-                      key=lambda i: -i["cvss"])
-    triaged = [i for i in issues if i["status"] == "Ignored"]
+                      key=lambda i: (-i["cvss"], i["package"], i["id"]))
+    by_pkg = Counter(i["package"] for i in blocking)
 
     if args.junit:
         cases = []
         for i in unpatched:
             name = escape(f"{i['package']} {i['id']}")
             body = ""
-            if i in blocking:
+            if i["cvss"] >= args.max_cvss:
                 msg = escape(f"CVSS {i['cvss']} >= {args.max_cvss}: {i['description'][:300]}")
                 body = f'<failure message="{msg}">{escape(i["link"])}</failure>'
             cases.append(f'<testcase classname="cve.{escape(i["package"])}" name="{name}">{body}</testcase>')
@@ -76,25 +83,32 @@ def main() -> int:
 
     if args.markdown:
         with open(args.markdown, "w", encoding="utf-8") as fh:
-            fh.write("### CVE gate\n\n")
-            fh.write(f"| Total | Unpatched | Blocking (CVSS >= {args.max_cvss}) | Triaged (VEX) |\n")
-            fh.write("|---|---|---|---|\n")
-            fh.write(f"| {len(issues)} | {len(unpatched)} | **{len(blocking)}** | {len(triaged)} |\n\n")
-            if blocking:
-                fh.write("| CVE | Package | CVSS |\n|---|---|---|\n")
-                for i in blocking[:25]:
-                    fh.write(f"| [{i['id']}]({i['link']}) | {i['package']} {i['version']} | {i['cvss']} |\n")
-                fh.write("\nTriage via MR to `meta-secure-linux/conf/secure-linux-cve-triage.inc` "
+            fh.write(f"### CVE gate ({args.mode})\n\n")
+            fh.write(f"| Total | Patched | Ignored (VEX) | Unpatched | Blocking (CVSS >= {args.max_cvss}) |\n")
+            fh.write("|---|---|---|---|---|\n")
+            fh.write(f"| {len(issues)} | {status['Patched']} | {status['Ignored']} | "
+                     f"{len(unpatched)} | **{len(blocking)}** |\n\n")
+            if by_pkg:
+                fh.write("| Package | Blocking |\n|---|---|\n")
+                for pkg, n in by_pkg.most_common():
+                    fh.write(f"| {pkg} | {n} |\n")
+                fh.write("\nTriage: `CVE_STATUS` with justification in the layer, "
                          "or upgrade/patch the recipe.\n")
 
-    print(f"CVE gate: {len(issues)} issues, {len(unpatched)} unpatched, "
-          f"{len(blocking)} blocking, {len(triaged)} triaged")
-    for i in blocking:
-        print(f"  BLOCKING {i['id']:<18} {i['package']:<24} CVSS {i['cvss']}")
+    if args.metrics:
+        with open(args.metrics, "a", encoding="utf-8") as fh:
+            fh.write(f"cve_total {len(issues)}\n")
+            fh.write(f"cve_unpatched {len(unpatched)}\n")
+            fh.write(f"cve_blocking {len(blocking)}\n")
+            fh.write(f"cve_ignored {status['Ignored']}\n")
 
-    if blocking and args.mode == "enforce":
-        return 1
-    return 0
+    print(f"CVE gate ({args.mode}): {len(issues)} issues | patched={status['Patched']} "
+          f"ignored={status['Ignored']} unpatched={len(unpatched)} "
+          f"blocking(CVSS>={args.max_cvss})={len(blocking)}")
+    for pkg, n in by_pkg.most_common():
+        print(f"  {n:4d}  {pkg}")
+
+    return 1 if (blocking and args.mode == "enforce") else 0
 
 
 if __name__ == "__main__":

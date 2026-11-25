@@ -1,0 +1,18 @@
+# =============================================================================
+# SBOM content for post-build CVE analysis (v0.5, ADR 0005).
+#
+# Takes only the SBOM-side settings of oe-core's "core/yocto/sbom-cve-check"
+# fragment. The scan itself runs as a separate CI job (security:cve-scan) on the
+# SBOM artifact, so the build stays reproducible and cacheable: no AUTOREV CVE
+# databases and no network-dependent task inside BitBake.
+# =============================================================================
+header:
+  version: 18
+
+local_conf_header:
+  30-sbom-vex: |
+    # Full VEX data (CVE_STATUS: patched / ignored / not-applicable) in the SPDX
+    SPDX_INCLUDE_VEX = "all"
+    # List the kernel sources that are actually compiled, so CVEs in drivers and
+    # subsystems that are not built can be ruled out
+    SPDX_INCLUDE_COMPILED_SOURCES:pn-linux-yocto = "1"

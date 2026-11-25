@@ -17,6 +17,7 @@ include:
 stages:
   - lint
   - build
+  - security
   - publish
 
 # Trust boundary (cache-poisoning protection, v0.3 step 3):
@@ -57,6 +58,9 @@ variables:
   GITLEAKS_IMAGE: "zricethezav/gitleaks:v8.30.1"
   OELINT_VERSION: "8.2.2"
   RCLONE_IMAGE: "rclone/rclone:1.76.0"
+  # v0.5 supply chain (ADR 0005)
+  PYTHON_IMAGE: "python:3.12"        # full image: includes git for the CVE databases
+  SBOM_CVE_CHECK_VERSION: "1.4.0"
 
 # ---------------------------------------------------------------------------
 # Shift-left gates (v0.4): seconds, before any runner-hour goes into bitbake.
@@ -172,13 +176,15 @@ build:qemux86-64:
   needs: [lint:yaml, lint:shell, lint:dockerfile, lint:recipes, lint:kernel-hardening, secrets:gitleaks]
   # MRs that touch nothing build-relevant (docs, README, infra notes) skip the
   # Yocto build entirely; protected refs always build (cheap with warm TMPDIR)
-  rules:
+  rules: &build-rules
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         - meta-secure-linux/**/*
         - kas/**/*
         - ci/scripts/ci-build.sh
         - ci/scripts/cache_stats.py
+        - ci/scripts/cve-scan.sh
+        - ci/scripts/cve_gate.py
         - .gitlab-ci.yml
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       when: never
@@ -197,7 +203,8 @@ build:qemux86-64:
     KAS_WORK_DIR: /cache/yocto/ci/work
     KAS_BUILD_DIR: /cache/yocto/ci/build-qemux86-64
     # v0.3: shared read-only mirror + hashserv/prserv (docker network yocto-cache)
-    KAS_FEATURES: "kas/features/local-vm.yml:kas/features/ci-mirror.yml"
+    # v0.5: sbom-vex.yml puts VEX + compiled kernel sources into the SBOM (ADR 0005)
+    KAS_FEATURES: "kas/features/local-vm.yml:kas/features/ci-mirror.yml:kas/features/sbom-vex.yml"
   script:
     # Map the image's "builder" user to the cache owner, then drop root
     - groupmod -o -g "$BUILD_UID" "$(id -gn builder)"
@@ -250,6 +257,40 @@ maintenance:fetch-all:
     paths:
       - build.log
       - fetch-all.txt
+
+# Post-build CVE scan of the image SBOM (v0.5, ADR 0005). Databases persist on
+# the runner volume - each runner its own copy (trust boundary) - and are only
+# updated incrementally. Report mode until the baseline is triaged (step C/D).
+security:cve-scan:
+  stage: security
+  image:
+    name: $PYTHON_IMAGE
+    docker:
+      user: "1000:1000"   # owner of the cache volume, like the build user
+  needs:
+    - job: build:qemux86-64
+      artifacts: true
+  rules: *build-rules
+  resource_group: cve-db
+  variables:
+    MACHINE: qemux86-64
+    HOME: /tmp
+    CVE_DB_DIR: /cache/yocto/cve-db
+    CVE_GATE_MODE: report
+    CVE_GATE_MAX_CVSS: "7.0"
+  script:
+    - ci/scripts/cve-scan.sh
+  artifacts:
+    when: always
+    expire_in: 4 weeks
+    paths:
+      - cve-check-*.json
+      - cve-summary-*.txt
+      - cve-gate-*.md
+      - junit-cve-*.xml
+      - cve-scan.log
+    reports:
+      metrics: metrics.txt
 
 # Write path of the shared cache (v0.3 step 3b). The ONLY job with mirror
 # write credentials: protected default branch, trusted runner, credentials
